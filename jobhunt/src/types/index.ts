@@ -1,0 +1,111 @@
+// Job Application Types for JobHunt CRM
+
+export type JobStatus =
+  | 'wishlist'
+  | 'applied'
+  | 'phone_screen'
+  | 'interview'
+  | 'offer'
+  | 'rejected'
+  | 'withdrawn'
+  | 'ghosted';
+
+export type InterviewType = 'phone' | 'video' | 'onsite' | 'technical' | 'behavioral';
+
+export type OutcomeReason =
+  | 'position_filled'
+  | 'not_qualified'
+  | 'culture_fit'
+  | 'salary_mismatch'
+  | 'other'
+  | null;
+
+export interface Resume {
+  id: string;
+  name: string;
+  fileName: string;
+  fileData: string; // Base64 encoded file
+  fileType: 'pdf' | 'docx';
+  versionTag?: string;
+  createdAt: string;
+}
+
+export interface Interview {
+  id: string;
+  jobId: string;
+  date: string;
+  type: InterviewType;
+  interviewerName?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Job {
+  id: string;
+  companyName: string;
+  jobTitle: string;
+  jobUrl?: string;
+  description?: string;
+  location?: string;
+  salaryRange?: string;
+  status: JobStatus;
+  appliedDate?: string;
+  targetApplyDate?: string;
+  outcome?: 'offer' | 'rejected' | 'withdrawn' | 'ghosted' | null;
+  outcomeReason?: OutcomeReason;
+  feedback?: string;
+  notes?: string;
+  resumeId?: string;
+  interviews: Interview[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobStats {
+  total: number;
+  wishlist: number;
+  applied: number;
+  interviewing: number;
+  offers: number;
+  rejected: number;
+  responseRate: number;
+  interviewRate: number;
+}
+
+// Column configuration for Kanban board
+export interface KanbanColumn {
+  id: JobStatus;
+  title: string;
+  color: string;
+}
+
+export const KANBAN_COLUMNS: KanbanColumn[] = [
+  { id: 'wishlist', title: 'Wishlist', color: 'bg-slate-500' },
+  { id: 'applied', title: 'Applied', color: 'bg-blue-500' },
+  { id: 'phone_screen', title: 'Phone Screen', color: 'bg-cyan-500' },
+  { id: 'interview', title: 'Interview', color: 'bg-purple-500' },
+  { id: 'offer', title: 'Offer', color: 'bg-green-500' },
+  { id: 'rejected', title: 'Rejected', color: 'bg-red-500' },
+];
+
+export const STATUS_LABELS: Record<JobStatus, string> = {
+  wishlist: 'Wishlist',
+  applied: 'Applied',
+  phone_screen: 'Phone Screen',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+  ghosted: 'Ghosted',
+};
+
+export const STATUS_COLORS: Record<JobStatus, string> = {
+  wishlist: 'bg-slate-100 text-slate-700 border-slate-300',
+  applied: 'bg-blue-100 text-blue-700 border-blue-300',
+  phone_screen: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+  interview: 'bg-purple-100 text-purple-700 border-purple-300',
+  offer: 'bg-green-100 text-green-700 border-green-300',
+  rejected: 'bg-red-100 text-red-700 border-red-300',
+  withdrawn: 'bg-orange-100 text-orange-700 border-orange-300',
+  ghosted: 'bg-gray-100 text-gray-700 border-gray-300',
+};
