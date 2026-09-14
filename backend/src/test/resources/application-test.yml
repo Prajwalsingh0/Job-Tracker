@@ -1,0 +1,26 @@
+# Test profile: runs the full Spring context against an in-memory H2 database in
+# PostgreSQL compatibility mode, so `mvn test` needs no external database.
+spring:
+  datasource:
+    url: jdbc:h2:mem:jobhunt-test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    show-sql: false
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+app:
+  jwt:
+    secret: test-only-jwt-signing-key-with-at-least-32-characters
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:5173

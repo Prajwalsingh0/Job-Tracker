@@ -10,10 +10,6 @@ import {
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
 import { useJobs } from '@/context/JobContext';
 import { Job, JobStatus, KANBAN_COLUMNS } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
@@ -37,8 +33,7 @@ export function KanbanBoard() {
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const job = state.jobs.find(j => j.id === active.id);
+    const job = state.jobs.find((candidate) => String(candidate.id) === String(event.active.id));
     if (job) {
       setActiveJob(job);
     }
@@ -50,12 +45,24 @@ export function KanbanBoard() {
 
     if (!over) return;
 
-    const jobId = active.id as string;
-    const newStatus = over.id as JobStatus;
+    const jobId = Number(active.id);
+    const overId = over.id;
 
-    if (KANBAN_COLUMNS.some(col => col.id === newStatus)) {
-      moveJob(jobId, newStatus);
-    }
+    // Dropping on a column header and dropping on a card inside that column should both work.
+    const targetColumn =
+      KANBAN_COLUMNS.find((column) => String(column.id) === String(overId)) ??
+      KANBAN_COLUMNS.find(
+        (column) =>
+          column.id ===
+          state.jobs.find((job) => String(job.id) === String(overId))?.status
+      );
+
+    if (!targetColumn) return;
+
+    const draggedJob = state.jobs.find((job) => job.id === jobId);
+    if (draggedJob && draggedJob.status === targetColumn.id) return;
+
+    void moveJob(jobId, targetColumn.id);
   };
 
   const handleJobClick = (job: Job) => {
@@ -68,10 +75,15 @@ export function KanbanBoard() {
     setSelectedJob(null);
   };
 
-  const handleDeleteJob = () => {
-    if (selectedJob && window.confirm('Are you sure you want to delete this job?')) {
-      deleteJob(selectedJob.id);
+  const handleDeleteJob = async () => {
+    if (!selectedJob || !window.confirm('Are you sure you want to delete this job?')) {
+      return;
+    }
+    try {
+      await deleteJob(selectedJob.id);
       handleCloseModal();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete the job');
     }
   };
 

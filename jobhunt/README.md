@@ -1,50 +1,40 @@
-# React + TypeScript + Vite
+# JobHunt Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 18 + TypeScript + Vite single-page app for the JobHunt job-application tracker.
+UI is Tailwind CSS with shadcn/ui-style components.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```bash
+npm install
+cp .env.example .env      # Windows: copy .env.example .env
+npm run dev               # http://localhost:5173
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+The app needs the Spring Boot API from `../backend` running (see the root `README.md`).
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server with HMR |
+| `npm run build` | Type-check (`tsc -b`) and production build |
+| `npm run preview` | Serve the production build |
+| `npm run lint` | ESLint |
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `http://localhost:8080` | Base URL of the backend API |
+
+## How it talks to the backend
+
+- `src/lib/api.ts` — single HTTP client: attaches the bearer token, normalises error
+  responses into `ApiError`, and exposes one typed method per endpoint.
+- `src/context/AuthContext.tsx` — register/login/logout, restores the session from the
+  stored JWT on load and clears it on sign-out.
+- `src/context/JobContext.tsx` — owns jobs, resumes and dashboard stats; every mutation
+  calls the API and re-syncs from the server.
+
+Screens: Login, Register, Dashboard (stats from `/api/jobs/stats`), Pipeline (drag-and-drop
+Kanban), All Jobs (server-side search and status filter), Resume Library (upload, preview,
+download, delete).

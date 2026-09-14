@@ -1,21 +1,45 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useJobs } from '@/context/JobContext';
-import { Job, STATUS_LABELS, STATUS_COLORS } from '@/types';
+import { api } from '@/lib/api';
+import { Job, JobStatus, STATUS_LABELS, STATUS_COLORS } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { JobForm } from '@/components/jobs/JobForm';
 import { Search, Plus, ExternalLink, MapPin, Calendar, FileText, Filter } from 'lucide-react';
 
 export function AllJobs() {
-  const { state, searchJobs, deleteJob, getResumeById } = useJobs();
+  const { deleteJob, getResumeById } = useJobs();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  const filteredJobs = (searchQuery ? searchJobs(searchQuery) : state.jobs)
-    .filter(job => statusFilter === 'all' || job.status === statusFilter)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  // Searching and filtering are delegated to the backend (?search=&status=).
+  const loadJobs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await api.listJobs({
+        search: searchQuery.trim() || undefined,
+        status: statusFilter === 'all' ? undefined : (statusFilter as JobStatus),
+      });
+      setJobs(result);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load jobs');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadJobs();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [loadJobs]);
 
   const handleJobClick = (job: Job) => {
     setSelectedJob(job);
@@ -27,11 +51,27 @@ export function AllJobs() {
     setSelectedJob(null);
   };
 
-  const handleDeleteJob = () => {
-    if (selectedJob && window.confirm('Are you sure you want to delete this job?')) {
-      deleteJob(selectedJob.id);
-      handleCloseModal();
+  const handleJobSaved = () => {
+    handleCloseModal();
+    void loadJobs();
+  };
+
+  const handleDeleteJob = async () => {
+    if (!selectedJob || !window.confirm('Are you sure you want to delete this job?')) {
+      return;
     }
+    try {
+      await deleteJob(selectedJob.id);
+      handleCloseModal();
+      await loadJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete the job');
+    }
+  };
+
+  const handleAddSaved = () => {
+    setIsAddModalOpen(false);
+    void loadJobs();
   };
 
   const getDaysSince = (date?: string) => {
@@ -47,7 +87,7 @@ export function AllJobs() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">All Jobs</h1>
-          <p className="text-gray-500 mt-1">{filteredJobs.length} jobs tracked</p>
+          <p className="text-gray-500 mt-1">{jobs.length} jobs tracked</p>
         </div>
         <button
           onClick={() => setIsAddModalOpen(true)}
@@ -57,6 +97,10 @@ export function AllJobs() {
           Add Job
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">{error}</div>
+      )}
 
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -87,9 +131,11 @@ export function AllJobs() {
 
       {/* Jobs List */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {filteredJobs.length > 0 ? (
+        {isLoading ? (
+          <div className="px-6 py-16 text-center text-gray-400 text-sm">Loading jobs...</div>
+        ) : jobs.length > 0 ? (
           <div className="divide-y divide-gray-100">
-            {filteredJobs.map((job) => {
+            {jobs.map((job) => {
               const resume = job.resumeId ? getResumeById(job.resumeId) : undefined;
               const daysSince = getDaysSince(job.appliedDate || job.createdAt);
 
@@ -180,7 +226,7 @@ export function AllJobs() {
         {selectedJob && (
           <JobForm
             job={selectedJob}
-            onSave={handleCloseModal}
+            onSave={handleJobSaved}
             onDelete={handleDeleteJob}
           />
         )}
@@ -193,7 +239,7 @@ export function AllJobs() {
         title="Add New Job"
         size="lg"
       >
-        <JobForm onSave={() => setIsAddModalOpen(false)} />
+        <JobForm onSave={handleAddSaved} />
       </Modal>
     </div>
   );

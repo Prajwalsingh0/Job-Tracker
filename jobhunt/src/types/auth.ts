@@ -1,7 +1,7 @@
 export interface User {
+    id: number;
     name: string;
     email: string;
-    password?: string; // Optional because we don't store it in session, only in DB
 }
 
 export interface LoginCredentials {
@@ -19,4 +19,11 @@ export interface AuthState {
     user: User | null;
     isLoading: boolean;
     error: string | null;
+}
+
+/** Response body returned by /api/auth/register and /api/auth/login. */
+export interface AuthResponse {
+    token: string;
+    tokenType: string;
+    user: User;
 }

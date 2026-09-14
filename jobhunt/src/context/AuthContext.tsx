@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { api, clearToken, getToken, setToken } from '@/lib/api';
 import { User, LoginCredentials, RegisterCredentials, AuthState } from '../types/auth';
 
 interface AuthContextType extends AuthState {
@@ -9,92 +10,76 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USERS_STORAGE_KEY = 'jobhunt_users';
-const CURRENT_USER_STORAGE_KEY = 'jobhunt_currentUser';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Auto-login on mount
+    // Restore the session from the stored JWT on first load.
     useEffect(() => {
-        const storedUser = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-        if (storedUser) {
-            try {
-                setUser(JSON.parse(storedUser));
-            } catch (err) {
-                console.error('Failed to parse stored user', err);
-                localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+        let cancelled = false;
+
+        const restoreSession = async () => {
+            if (!getToken()) {
+                setIsLoading(false);
+                return;
             }
-        }
-        setIsLoading(false);
+
+            try {
+                const currentUser = await api.me();
+                if (!cancelled) {
+                    setUser(currentUser);
+                }
+            } catch {
+                clearToken();
+            } finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        void restoreSession();
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    const login = async ({ email, password }: LoginCredentials) => {
+    const login = useCallback(async ({ email, password }: LoginCredentials) => {
         setIsLoading(true);
         setError(null);
-
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         try {
-            const usersJson = localStorage.getItem(USERS_STORAGE_KEY);
-            const users: User[] = usersJson ? JSON.parse(usersJson) : [];
-
-            const foundUser = users.find(u => u.email === email && u.password === password);
-
-            if (foundUser) {
-                const { password: _, ...userWithoutPassword } = foundUser;
-                setUser(userWithoutPassword);
-                localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(userWithoutPassword));
-            } else {
-                throw new Error('Invalid email or password');
-            }
+            const response = await api.login({ email, password });
+            setToken(response.token);
+            setUser(response.user);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Login failed');
             throw err;
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const register = async ({ name, email, password }: RegisterCredentials) => {
+    const register = useCallback(async ({ name, email, password }: RegisterCredentials) => {
         setIsLoading(true);
         setError(null);
-
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         try {
-            const usersJson = localStorage.getItem(USERS_STORAGE_KEY);
-            const users: User[] = usersJson ? JSON.parse(usersJson) : [];
-
-            if (users.some(u => u.email === email)) {
-                throw new Error('Email already exists');
-            }
-
-            const newUser: User = { name, email, password };
-            const updatedUsers = [...users, newUser];
-
-            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
-
-            // Auto-login after register
-            const { password: _, ...userWithoutPassword } = newUser;
-            setUser(userWithoutPassword);
-            localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(userWithoutPassword));
+            const response = await api.register({ name, email, password });
+            setToken(response.token);
+            setUser(response.user);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Registration failed');
             throw err;
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const logout = () => {
+    const logout = useCallback(() => {
+        clearToken();
         setUser(null);
-        localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-    };
+        setError(null);
+    }, []);
 
     return (
         <AuthContext.Provider value={{ user, isLoading, error, login, register, logout }}>

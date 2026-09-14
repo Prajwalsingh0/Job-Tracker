@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Job, JobStatus, Resume, STATUS_LABELS, OutcomeReason } from '@/types';
+import { Job, JobPayload, JobStatus, OutcomeReason, STATUS_LABELS } from '@/types';
 import { useJobs } from '@/context/JobContext';
 import { Building2, Briefcase, Link, MapPin, DollarSign, FileText, Calendar, Save, Trash2, Upload } from 'lucide-react';
 
@@ -20,17 +20,18 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
     description: '',
     location: '',
     salaryRange: '',
-    status: initialStatus,
+    status: initialStatus as JobStatus,
     appliedDate: new Date().toISOString().split('T')[0],
     targetApplyDate: '',
-    outcome: null as Job['outcome'],
-    outcomeReason: null as OutcomeReason,
+    outcomeReason: null as OutcomeReason | null,
     feedback: '',
     notes: '',
     resumeId: '',
   });
 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (job) {
@@ -44,11 +45,10 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
         status: job.status,
         appliedDate: job.appliedDate || new Date().toISOString().split('T')[0],
         targetApplyDate: job.targetApplyDate || '',
-        outcome: job.outcome || null,
-        outcomeReason: job.outcomeReason || null,
+        outcomeReason: job.outcomeReason ?? null,
         feedback: job.feedback || '',
         notes: job.notes || '',
-        resumeId: job.resumeId || '',
+        resumeId: job.resumeId ? String(job.resumeId) : '',
       });
     }
   }, [job]);
@@ -58,71 +58,72 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (!validTypes.includes(file.type)) {
-      alert('Please upload a PDF or DOCX file');
+      setSubmitError('Please upload a PDF or DOCX file');
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB');
+      setSubmitError('File size must be less than 10MB');
       return;
     }
 
+    setSubmitError(null);
     setResumeFile(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError(null);
 
-    const resumeId = formData.resumeId;
+    try {
+      // A document uploaded here is saved to the resume library and linked to this job
+      // in a single step, using the id returned by the API.
+      let resumeId: number | null = formData.resumeId ? Number(formData.resumeId) : null;
 
-    if (resumeFile) {
-      const reader = new FileReader();
-      const fileData = await new Promise<string>((resolve) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsDataURL(resumeFile);
-      });
+      if (resumeFile) {
+        const versionTag = [formData.companyName, formData.jobTitle].filter(Boolean).join(' - ');
+        const created = await addResume(resumeFile, {
+          name: resumeFile.name.replace(/\.[^/.]+$/, ''),
+          versionTag: versionTag || undefined,
+        });
+        resumeId = created.id;
+      }
 
-      const newResume: Omit<Resume, 'id' | 'createdAt'> = {
-        name: resumeFile.name.replace(/\.[^/.]+$/, ''),
-        fileName: resumeFile.name,
-        fileData,
-        fileType: resumeFile.type.includes('pdf') ? 'pdf' : 'docx',
-        versionTag: `${formData.companyName} - ${formData.jobTitle}`,
+      const payload: JobPayload = {
+        companyName: formData.companyName,
+        jobTitle: formData.jobTitle,
+        jobUrl: formData.jobUrl || undefined,
+        description: formData.description || undefined,
+        location: formData.location || undefined,
+        salaryRange: formData.salaryRange || undefined,
+        status: formData.status,
+        appliedDate: formData.status !== 'wishlist' ? formData.appliedDate : undefined,
+        targetApplyDate: formData.targetApplyDate || undefined,
+        outcomeReason: formData.outcomeReason || undefined,
+        feedback: formData.feedback || undefined,
+        notes: formData.notes || undefined,
+        resumeId,
       };
 
-      addResume(newResume);
+      if (job) {
+        await updateJob(job.id, payload);
+      } else {
+        await addJob(payload);
+      }
+
+      onSave();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Something went wrong while saving.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const jobData = {
-      companyName: formData.companyName,
-      jobTitle: formData.jobTitle,
-      jobUrl: formData.jobUrl || undefined,
-      description: formData.description || undefined,
-      location: formData.location || undefined,
-      salaryRange: formData.salaryRange || undefined,
-      status: formData.status,
-      appliedDate: formData.status !== 'wishlist' ? formData.appliedDate : undefined,
-      targetApplyDate: formData.targetApplyDate || undefined,
-      outcome: formData.outcome,
-      outcomeReason: formData.outcomeReason,
-      feedback: formData.feedback || undefined,
-      notes: formData.notes || undefined,
-      resumeId: resumeId || undefined,
-    };
-
-    if (job) {
-      updateJob({ ...job, ...jobData });
-    } else {
-      addJob(jobData);
-    }
-
-    onSave();
   };
 
   const showAppliedDate = formData.status !== 'wishlist';
@@ -130,6 +131,10 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {submitError && (
+        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">{submitError}</div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -237,7 +242,11 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
             <input type="file" accept=".pdf,.docx" onChange={handleResumeUpload} className="hidden" />
           </label>
         </div>
-        {resumeFile && <p className="mt-2 text-sm text-green-600">Selected: {resumeFile.name}</p>}
+        {resumeFile && (
+          <p className="mt-2 text-sm text-green-600">
+            Selected: {resumeFile.name} — it will be added to your resume library when you save.
+          </p>
+        )}
       </div>
 
       {showOutcome && (
@@ -280,17 +289,17 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
 
       <div className="flex items-center justify-between pt-4 border-t">
         {job && onDelete && (
-          <button type="button" onClick={onDelete}
-            className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+          <button type="button" onClick={onDelete} disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
             <Trash2 className="w-4 h-4" />
             Delete
           </button>
         )}
         <div className={!job ? 'ml-auto' : ''}>
-          <button type="submit"
-            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+          <button type="submit" disabled={isSubmitting}
+            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             <Save className="w-4 h-4" />
-            {job ? 'Save Changes' : 'Add Job'}
+            {isSubmitting ? 'Saving...' : job ? 'Save Changes' : 'Add Job'}
           </button>
         </div>
       </div>

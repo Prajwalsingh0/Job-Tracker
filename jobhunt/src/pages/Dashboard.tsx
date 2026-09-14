@@ -1,9 +1,22 @@
 import { useJobs } from '@/context/JobContext';
+import { JobStats } from '@/types';
 import { Briefcase, Send, Users, Trophy, XCircle, TrendingUp, Clock } from 'lucide-react';
 
+const EMPTY_STATS: JobStats = {
+  total: 0,
+  wishlist: 0,
+  applied: 0,
+  interviewing: 0,
+  offers: 0,
+  rejected: 0,
+  responseRate: 0,
+  interviewRate: 0,
+};
+
 export function Dashboard() {
-  const { state, getStats } = useJobs();
-  const stats = getStats();
+  const { state } = useJobs();
+  // Dashboard statistics are computed by the backend (GET /api/jobs/stats).
+  const stats = state.stats ?? EMPTY_STATS;
 
   const recentJobs = [...state.jobs]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())

@@ -1,244 +1,143 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { Job, Resume, JobStats, JobStatus } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { api } from '@/lib/api';
+import { useAuth } from './AuthContext';
+import { Job, JobPayload, JobStats, JobStatus, Resume } from '../types';
 
-// State interface
 interface JobState {
   jobs: Job[];
   resumes: Resume[];
+  stats: JobStats | null;
   isLoading: boolean;
+  error: string | null;
 }
 
-// Action types
-type JobAction =
-  | { type: 'SET_JOBS'; payload: Job[] }
-  | { type: 'ADD_JOB'; payload: Job }
-  | { type: 'UPDATE_JOB'; payload: Job }
-  | { type: 'DELETE_JOB'; payload: string }
-  | { type: 'MOVE_JOB'; payload: { jobId: string; newStatus: JobStatus } }
-  | { type: 'SET_RESUMES'; payload: Resume[] }
-  | { type: 'ADD_RESUME'; payload: Resume }
-  | { type: 'DELETE_RESUME'; payload: string }
-  | { type: 'SET_LOADING'; payload: boolean };
-
-// Initial state
-const initialState: JobState = {
-  jobs: [],
-  resumes: [],
-  isLoading: true,
-};
-
-// Reducer
-function jobReducer(state: JobState, action: JobAction): JobState {
-  switch (action.type) {
-    case 'SET_JOBS':
-      return { ...state, jobs: action.payload, isLoading: false };
-    case 'ADD_JOB':
-      return { ...state, jobs: [...state.jobs, action.payload] };
-    case 'UPDATE_JOB':
-      return {
-        ...state,
-        jobs: state.jobs.map(job =>
-          job.id === action.payload.id ? action.payload : job
-        ),
-      };
-    case 'DELETE_JOB':
-      return {
-        ...state,
-        jobs: state.jobs.filter(job => job.id !== action.payload),
-      };
-    case 'MOVE_JOB':
-      return {
-        ...state,
-        jobs: state.jobs.map(job =>
-          job.id === action.payload.jobId
-            ? {
-                ...job,
-                status: action.payload.newStatus,
-                updatedAt: new Date().toISOString(),
-                appliedDate: action.payload.newStatus === 'applied' && !job.appliedDate
-                  ? new Date().toISOString().split('T')[0]
-                  : job.appliedDate
-              }
-            : job
-        ),
-      };
-    case 'SET_RESUMES':
-      return { ...state, resumes: action.payload };
-    case 'ADD_RESUME':
-      return { ...state, resumes: [...state.resumes, action.payload] };
-    case 'DELETE_RESUME':
-      return {
-        ...state,
-        resumes: state.resumes.filter(resume => resume.id !== action.payload),
-      };
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    default:
-      return state;
-  }
-}
-
-// Context interface
 interface JobContextType {
   state: JobState;
+  refresh: () => Promise<void>;
   // Job actions
-  addJob: (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt' | 'interviews'>) => void;
-  updateJob: (job: Job) => void;
-  deleteJob: (jobId: string) => void;
-  moveJob: (jobId: string, newStatus: JobStatus) => void;
-  getJobById: (jobId: string) => Job | undefined;
+  addJob: (payload: JobPayload) => Promise<Job>;
+  updateJob: (jobId: number, payload: JobPayload) => Promise<Job>;
+  deleteJob: (jobId: number) => Promise<void>;
+  moveJob: (jobId: number, status: JobStatus) => Promise<Job>;
+  getJobById: (jobId: number) => Job | undefined;
   // Resume actions
-  addResume: (resume: Omit<Resume, 'id' | 'createdAt'>) => void;
-  deleteResume: (resumeId: string) => void;
-  getResumeById: (resumeId: string) => Resume | undefined;
-  // Stats
-  getStats: () => JobStats;
-  // Filtering
+  addResume: (file: File, meta?: { name?: string; versionTag?: string }) => Promise<Resume>;
+  deleteResume: (resumeId: number) => Promise<void>;
+  getResumeById: (resumeId: number) => Resume | undefined;
+  // Local selectors
   getJobsByStatus: (status: JobStatus) => Job[];
-  searchJobs: (query: string) => Job[];
 }
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
 
-// Storage keys
-const JOBS_STORAGE_KEY = 'jobhunt_jobs';
-const RESUMES_STORAGE_KEY = 'jobhunt_resumes';
-
-// Provider component
 export function JobProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(jobReducer, initialState);
+  const { user } = useAuth();
 
-  // Load data from localStorage on mount
-  useEffect(() => {
-    try {
-      const storedJobs = localStorage.getItem(JOBS_STORAGE_KEY);
-      const storedResumes = localStorage.getItem(RESUMES_STORAGE_KEY);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [resumes, setResumes] = useState<Resume[]>([]);
+  const [stats, setStats] = useState<JobStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-      if (storedJobs) {
-        dispatch({ type: 'SET_JOBS', payload: JSON.parse(storedJobs) });
-      } else {
-        dispatch({ type: 'SET_LOADING', payload: false });
-      }
-
-      if (storedResumes) {
-        dispatch({ type: 'SET_RESUMES', payload: JSON.parse(storedResumes) });
-      }
-    } catch (error) {
-      console.error('Error loading data from localStorage:', error);
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
+  const loadAll = useCallback(async () => {
+    const [jobsResult, resumesResult, statsResult] = await Promise.all([
+      api.listJobs(),
+      api.listResumes(),
+      api.jobStats(),
+    ]);
+    setJobs(jobsResult);
+    setResumes(resumesResult);
+    setStats(statsResult);
   }, []);
 
-  // Save jobs to localStorage whenever they change
-  useEffect(() => {
-    if (!state.isLoading) {
-      localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(state.jobs));
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load your data');
+    } finally {
+      setIsLoading(false);
     }
-  }, [state.jobs, state.isLoading]);
+  }, [loadAll]);
 
-  // Save resumes to localStorage whenever they change
+  // Load data once the user is authenticated; clear it on sign-out.
   useEffect(() => {
-    if (!state.isLoading) {
-      localStorage.setItem(RESUMES_STORAGE_KEY, JSON.stringify(state.resumes));
+    if (!user) {
+      setJobs([]);
+      setResumes([]);
+      setStats(null);
+      setIsLoading(false);
+      setError(null);
+      return;
     }
-  }, [state.resumes, state.isLoading]);
+    void refresh();
+  }, [user, refresh]);
 
-  // Job actions
-  const addJob = (jobData: Omit<Job, 'id' | 'createdAt' | 'updatedAt' | 'interviews'>) => {
-    const now = new Date().toISOString();
-    const newJob: Job = {
-      ...jobData,
-      id: uuidv4(),
-      interviews: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    dispatch({ type: 'ADD_JOB', payload: newJob });
-  };
+  /** Runs a mutation, then re-syncs jobs/stats/resumes from the server. */
+  const mutate = useCallback(
+    async <T,>(action: () => Promise<T>): Promise<T> => {
+      const result = await action();
+      try {
+        await loadAll();
+      } catch {
+        // The mutation succeeded; a failed refresh should not fail the action.
+      }
+      return result;
+    },
+    [loadAll],
+  );
 
-  const updateJob = (job: Job) => {
-    const updatedJob = { ...job, updatedAt: new Date().toISOString() };
-    dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
-  };
+  const addJob = useCallback(
+    (payload: JobPayload) => mutate(() => api.createJob(payload)),
+    [mutate],
+  );
 
-  const deleteJob = (jobId: string) => {
-    dispatch({ type: 'DELETE_JOB', payload: jobId });
-  };
+  const updateJob = useCallback(
+    (jobId: number, payload: JobPayload) => mutate(() => api.updateJob(jobId, payload)),
+    [mutate],
+  );
 
-  const moveJob = (jobId: string, newStatus: JobStatus) => {
-    dispatch({ type: 'MOVE_JOB', payload: { jobId, newStatus } });
-  };
+  const deleteJob = useCallback(
+    (jobId: number) => mutate(() => api.deleteJob(jobId)),
+    [mutate],
+  );
 
-  const getJobById = (jobId: string) => {
-    return state.jobs.find(job => job.id === jobId);
-  };
+  const moveJob = useCallback(
+    (jobId: number, status: JobStatus) => mutate(() => api.updateJobStatus(jobId, status)),
+    [mutate],
+  );
 
-  // Resume actions
-  const addResume = (resumeData: Omit<Resume, 'id' | 'createdAt'>) => {
-    const newResume: Resume = {
-      ...resumeData,
-      id: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: 'ADD_RESUME', payload: newResume });
-  };
+  const addResume = useCallback(
+    (file: File, meta: { name?: string; versionTag?: string } = {}) =>
+      mutate(() => api.uploadResume(file, meta)),
+    [mutate],
+  );
 
-  const deleteResume = (resumeId: string) => {
-    dispatch({ type: 'DELETE_RESUME', payload: resumeId });
-  };
+  const deleteResume = useCallback(
+    (resumeId: number) => mutate(() => api.deleteResume(resumeId)),
+    [mutate],
+  );
 
-  const getResumeById = (resumeId: string) => {
-    return state.resumes.find(resume => resume.id === resumeId);
-  };
+  const getJobById = useCallback(
+    (jobId: number) => jobs.find((job) => job.id === jobId),
+    [jobs],
+  );
 
-  // Get stats
-  const getStats = (): JobStats => {
-    const jobs = state.jobs;
-    const total = jobs.length;
-    const wishlist = jobs.filter(j => j.status === 'wishlist').length;
-    const applied = jobs.filter(j => j.status !== 'wishlist').length;
-    const interviewing = jobs.filter(j =>
-      ['phone_screen', 'interview'].includes(j.status)
-    ).length;
-    const offers = jobs.filter(j => j.status === 'offer').length;
-    const rejected = jobs.filter(j => j.status === 'rejected').length;
+  const getResumeById = useCallback(
+    (resumeId: number) => resumes.find((resume) => resume.id === resumeId),
+    [resumes],
+  );
 
-    const responded = jobs.filter(j =>
-      !['wishlist', 'applied', 'ghosted'].includes(j.status)
-    ).length;
-
-    const responseRate = applied > 0 ? (responded / applied) * 100 : 0;
-    const interviewRate = applied > 0 ? (interviewing / applied) * 100 : 0;
-
-    return {
-      total,
-      wishlist,
-      applied,
-      interviewing,
-      offers,
-      rejected,
-      responseRate,
-      interviewRate,
-    };
-  };
-
-  // Filtering
-  const getJobsByStatus = (status: JobStatus) => {
-    return state.jobs.filter(job => job.status === status);
-  };
-
-  const searchJobs = (query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return state.jobs.filter(job =>
-      job.companyName.toLowerCase().includes(lowerQuery) ||
-      job.jobTitle.toLowerCase().includes(lowerQuery) ||
-      job.location?.toLowerCase().includes(lowerQuery)
-    );
-  };
+  const getJobsByStatus = useCallback(
+    (status: JobStatus) => jobs.filter((job) => job.status === status),
+    [jobs],
+  );
 
   const value: JobContextType = {
-    state,
+    state: { jobs, resumes, stats, isLoading, error },
+    refresh,
     addJob,
     updateJob,
     deleteJob,
@@ -247,15 +146,12 @@ export function JobProvider({ children }: { children: ReactNode }) {
     addResume,
     deleteResume,
     getResumeById,
-    getStats,
     getJobsByStatus,
-    searchJobs,
   };
 
   return <JobContext.Provider value={value}>{children}</JobContext.Provider>;
 }
 
-// Hook to use the context
 export function useJobs() {
   const context = useContext(JobContext);
   if (context === undefined) {

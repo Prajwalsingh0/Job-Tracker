@@ -1,4 +1,5 @@
-// Job Application Types for JobHunt CRM
+// Job Application Types for JobHunt
+// These mirror the payloads returned by the Spring Boot backend (see backend/src/main/java/com/jobhunt/dto).
 
 export type JobStatus =
   | 'wishlist'
@@ -17,22 +18,26 @@ export type OutcomeReason =
   | 'not_qualified'
   | 'culture_fit'
   | 'salary_mismatch'
-  | 'other'
-  | null;
+  | 'other';
 
+export type JobOutcome = 'offer' | 'rejected' | 'withdrawn' | 'ghosted';
+
+export type ResumeFileType = 'pdf' | 'docx';
+
+/** Resume metadata. The document itself is fetched from /api/resumes/{id}/download. */
 export interface Resume {
-  id: string;
+  id: number;
   name: string;
   fileName: string;
-  fileData: string; // Base64 encoded file
-  fileType: 'pdf' | 'docx';
+  fileType: ResumeFileType;
   versionTag?: string;
+  usageCount: number;
   createdAt: string;
 }
 
 export interface Interview {
-  id: string;
-  jobId: string;
+  id: number;
+  jobId: number;
   date: string;
   type: InterviewType;
   interviewerName?: string;
@@ -41,7 +46,7 @@ export interface Interview {
 }
 
 export interface Job {
-  id: string;
+  id: number;
   companyName: string;
   jobTitle: string;
   jobUrl?: string;
@@ -51,14 +56,31 @@ export interface Job {
   status: JobStatus;
   appliedDate?: string;
   targetApplyDate?: string;
-  outcome?: 'offer' | 'rejected' | 'withdrawn' | 'ghosted' | null;
+  outcome?: JobOutcome;
   outcomeReason?: OutcomeReason;
   feedback?: string;
   notes?: string;
-  resumeId?: string;
-  interviews: Interview[];
+  resumeId?: number;
+  interviews?: Interview[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** Create/update payload for a job. `outcome` is derived from `status` by the backend. */
+export interface JobPayload {
+  companyName: string;
+  jobTitle: string;
+  jobUrl?: string;
+  description?: string;
+  location?: string;
+  salaryRange?: string;
+  status: JobStatus;
+  appliedDate?: string;
+  targetApplyDate?: string;
+  outcomeReason?: OutcomeReason;
+  feedback?: string;
+  notes?: string;
+  resumeId?: number | null;
 }
 
 export interface JobStats {
@@ -86,6 +108,8 @@ export const KANBAN_COLUMNS: KanbanColumn[] = [
   { id: 'interview', title: 'Interview', color: 'bg-purple-500' },
   { id: 'offer', title: 'Offer', color: 'bg-green-500' },
   { id: 'rejected', title: 'Rejected', color: 'bg-red-500' },
+  { id: 'withdrawn', title: 'Withdrawn', color: 'bg-orange-500' },
+  { id: 'ghosted', title: 'Ghosted', color: 'bg-gray-500' },
 ];
 
 export const STATUS_LABELS: Record<JobStatus, string> = {
