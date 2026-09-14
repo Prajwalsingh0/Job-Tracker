@@ -28,24 +28,55 @@ com.jobhunt
 ## Running
 
 ```bash
+# JWT_SECRET is required - see "JWT secret" below
+export JWT_SECRET='paste-your-generated-secret-here'   # Windows: $env:JWT_SECRET = '...'
+
 mvn spring-boot:run           # http://localhost:8080
-mvn test                      # 14 integration tests, no database required
+mvn test                      # 14 integration tests, no database and no JWT_SECRET required
 mvn package                   # tests + executable jar
 ```
 
 ### Configuration
 
-All settings have local defaults and can be overridden with environment variables:
+All settings except `JWT_SECRET` have local defaults and can be overridden with environment
+variables:
 
 | Variable | Default |
 | --- | --- |
+| `JWT_SECRET` | **none — required.** At least 32 characters; startup fails without it. |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/jobhunt` |
 | `DB_USERNAME` | `postgres` |
 | `DB_PASSWORD` | `postgres` |
-| `JWT_SECRET` | dev-only value (must be ≥ 32 chars) |
 | `JWT_EXPIRATION_MS` | `86400000` |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
 | `SERVER_PORT` | `8080` |
+
+## JWT secret
+
+`app.jwt.secret` resolves to `${JWT_SECRET:}` — an environment variable with **no committed
+fallback value**. `JwtService` validates it during bean creation, so a bad value aborts
+startup before the HTTP port is opened:
+
+| Condition | Result |
+| --- | --- |
+| `JWT_SECRET` unset or blank | Startup fails: *"JWT_SECRET is not set…"* |
+| `JWT_SECRET` shorter than 32 characters | Startup fails: *"JWT_SECRET is too short (N characters)…"* |
+| `JWT_SECRET` ≥ 32 characters | Startup proceeds; HS256 signing key derived via `Keys.hmacShaKeyFor` |
+
+Why 32 characters: HS256 needs a 256-bit key, and a UTF-8 encoded string is never shorter
+than its character count, so ≥ 32 characters always yields ≥ 32 bytes.
+
+The secret value is never logged, never echoed in an error message, and never returned by
+any endpoint. Generate one with:
+
+```bash
+openssl rand -base64 48
+```
+
+The **test profile does not need `JWT_SECRET`**. `src/test/resources/application-test.yml`
+sets `app.jwt.secret` from `${random.uuid}${random.uuid}`, so every test run gets a fresh
+throwaway key with no secret literal stored anywhere in the repository. That key exists only
+for the lifetime of the test JVM and is unrelated to any real deployment.
 
 ## Database
 
@@ -75,6 +106,8 @@ owner — one account can never read or modify another account's data.
 - Passwords are hashed with **BCrypt**; the hash is never returned by the API.
 - `POST /api/auth/register` and `POST /api/auth/login` are the only public endpoints.
 - Every other request needs `Authorization: Bearer <JWT>` (HS256).
+- The signing key comes only from `JWT_SECRET`, and startup fails if it is missing or weak
+  (see "JWT secret" above).
 - Sessions are stateless — no HTTP session, no cookies.
 - A `JwtAuthenticationFilter` validates the token and loads the user on each request.
 - Unauthenticated requests get a JSON `401`; forbidden ones get a JSON `403`.
@@ -177,7 +210,8 @@ job that referenced it; the jobs themselves are kept.
   unsupported file types, and attaching another user's resume.
 
 They run against in-memory H2 in PostgreSQL compatibility mode
-(`src/test/resources/application-test.yml`), so no database server is needed:
+(`src/test/resources/application-test.yml`), so no database server and no `JWT_SECRET` are
+needed:
 
 ```bash
 mvn test

@@ -35,7 +35,33 @@ Spring Boot API.
 
 ---
 
-## 1. Set up the database
+## 1. Generate a JWT secret (required)
+
+The API signs its JWT access tokens with a secret that is **read only from the
+`JWT_SECRET` environment variable**. There is no default and no fallback in the repository.
+If `JWT_SECRET` is missing, or shorter than 32 characters, the application **refuses to
+start** and explains why.
+
+Generate a strong value once and keep it out of version control:
+
+```bash
+# macOS / Linux / Git Bash
+openssl rand -base64 48
+
+# Windows PowerShell
+[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
+
+# Node.js
+node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+```
+
+Use the same secret every time you start the API — changing it invalidates all issued
+tokens and forces users to sign in again. Never commit it; `.env` and `*.env` files are
+git-ignored.
+
+---
+
+## 2. Set up the database
 
 Create the database and a role (adjust names/passwords as you like):
 
@@ -50,45 +76,63 @@ No manual DDL is required.
 
 ---
 
-## 2. Run the backend
+## 3. Run the backend
 
 ```bash
 cd backend
+
+# Set the secret in your shell (use the value you generated in step 1)
+export JWT_SECRET='paste-your-generated-secret-here'      # Windows: $env:JWT_SECRET = '...'
+
+# Optional: point at your database if the defaults don't match
+export DB_USERNAME='jobhunt'
+export DB_PASSWORD='change-me'
+
 mvn spring-boot:run
 ```
 
 The API starts on **http://localhost:8080**.
 
-Configuration is read from environment variables, with sensible local defaults:
+Configuration is read from environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `JWT_SECRET` | **none — required** | HMAC signing key for JWTs. At least 32 characters. The app fails fast if it is missing or too short. |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/jobhunt` | JDBC URL |
 | `DB_USERNAME` | `postgres` | Database user |
 | `DB_PASSWORD` | `postgres` | Database password |
-| `JWT_SECRET` | dev-only value | HMAC signing key, **must be ≥ 32 characters** |
 | `JWT_EXPIRATION_MS` | `86400000` (24h) | Token lifetime |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call the API |
 | `SERVER_PORT` | `8080` | HTTP port |
-
-Example:
-
-```bash
-cd backend
-DB_USERNAME=jobhunt DB_PASSWORD=change-me JWT_SECRET="a-long-random-secret-at-least-32-chars" mvn spring-boot:run
-```
 
 ### Run the packaged jar
 
 ```bash
 cd backend
 mvn package
-java -jar target/jobhunt-backend-1.0.0.jar
+JWT_SECRET='paste-your-generated-secret-here' java -jar target/jobhunt-backend-1.0.0.jar
 ```
+
+### If startup fails
+
+```
+JWT_SECRET is not set. Set the JWT_SECRET environment variable to a random string of at
+least 32 characters before starting the application. Generate one with: openssl rand -base64 48
+```
+
+or
+
+```
+JWT_SECRET is too short (N characters). It must be at least 32 characters (256 bits) for
+HS256. Generate one with: openssl rand -base64 48
+```
+
+Both mean the environment variable is missing or too weak — the server deliberately exits
+rather than start with an insecure signing key. Neither message ever contains the value.
 
 ---
 
-## 3. Run the frontend
+## 4. Run the frontend
 
 ```bash
 cd jobhunt
@@ -104,7 +148,7 @@ so you can point it at a different backend without touching the code.
 
 ---
 
-## 4. Tests and builds
+## 5. Tests and builds
 
 ```bash
 # Backend: 14 integration tests (auth + job CRUD + isolation + resumes)
@@ -118,8 +162,10 @@ cd jobhunt && npm run build
 ```
 
 Backend tests run against an **in-memory H2 database** in PostgreSQL compatibility mode
-(`src/test/resources/application-test.yml`), so `mvn test` needs no database server.
-The running application always uses PostgreSQL.
+(`src/test/resources/application-test.yml`), so `mvn test` needs no database server and no
+`JWT_SECRET` — the test profile supplies a throwaway randomly generated key that is never
+used outside tests. The running application always uses PostgreSQL and always requires a
+real `JWT_SECRET`.
 
 ---
 
@@ -178,10 +224,10 @@ Errors always use the same JSON shape:
 ## Smoke-testing the API by hand
 
 ```bash
-# Register
+# Register (JWT_SECRET must be exported in the server's shell first)
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Ada","email":"ada@example.com","password":"secret123"}'
+  -d '{"name":"Ada","email":"ada@example.com","password":"change-me"}'
 
 # Create a job (paste the token from the response above)
 curl -X POST http://localhost:8080/api/jobs \
@@ -193,6 +239,15 @@ curl http://localhost:8080/api/jobs/stats -H "Authorization: Bearer <TOKEN>"
 ```
 
 ---
+
+## Secret handling
+
+- `JWT_SECRET` is the only credential the application reads, and it has **no committed
+  fallback** — a missing or weak value stops startup.
+- It is never written to source code, logs, error messages, or this documentation.
+- `.env` files and build output are excluded via `.gitignore`; only `jobhunt/.env.example`
+  (a template with no values) is tracked.
+- Passwords are stored only as BCrypt hashes, and the hash is never returned by the API.
 
 ## Known limitations
 

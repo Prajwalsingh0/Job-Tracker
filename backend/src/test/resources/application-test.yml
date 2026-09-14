@@ -20,7 +20,9 @@ spring:
 
 app:
   jwt:
-    secret: test-only-jwt-signing-key-with-at-least-32-characters
+    # Ephemeral signing key generated fresh for every test run. No secret literal is
+    # stored in the repository, and `mvn test` needs no JWT_SECRET environment variable.
+    secret: ${random.uuid}${random.uuid}
     expiration-ms: 3600000
   cors:
     allowed-origins: http://localhost:5173
