@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useJobs } from '@/context/JobContext';
 import { api } from '@/lib/api';
-import { Job, JobStatus, STATUS_LABELS, STATUS_COLORS } from '@/types';
+import { Job, JobStatus, STATUS_LABELS } from '@/types';
 import { Modal } from '@/components/ui/Modal';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { JobForm } from '@/components/jobs/JobForm';
 import { Search, Plus, ExternalLink, MapPin, Calendar, FileText, Filter } from 'lucide-react';
 
@@ -189,9 +190,7 @@ export function AllJobs() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[job.status]}`}>
-                        {STATUS_LABELS[job.status]}
-                      </span>
+                      <StatusBadge status={job.status} />
                       {job.salaryRange && (
                         <span className="text-sm text-green-600 font-medium">{job.salaryRange}</span>
                       )}

@@ -49,10 +49,12 @@ async function toApiError(response: Response): Promise<ApiError> {
         payload = null;
     }
 
+    // Validation responses carry both a generic "Validation failed" message and the
+    // per-field messages. The field message is the actionable one, so prefer it.
     const firstFieldError = payload?.fieldErrors ? Object.values(payload.fieldErrors)[0] : undefined;
     const message =
-        payload?.message ??
         firstFieldError ??
+        payload?.message ??
         `Request failed with status ${response.status}`;
 
     return new ApiError(message, response.status, payload?.fieldErrors ?? null);

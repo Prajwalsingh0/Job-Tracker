@@ -71,8 +71,16 @@ CREATE USER jobhunt WITH PASSWORD 'change-me';
 GRANT ALL PRIVILEGES ON DATABASE jobhunt TO jobhunt;
 ```
 
-The schema is created automatically on first start (`spring.jpa.hibernate.ddl-auto: update`).
-No manual DDL is required.
+The schema is owned by **Flyway** migrations in `backend/src/main/resources/db/migration/`
+(`postgresql/` and `h2/`). They run automatically on startup, and Hibernate is configured with
+`ddl-auto: validate` — so the application refuses to start if the entities and the migrated schema
+disagree. No manual DDL is required.
+
+Prefer containers? The repository ships a `docker-compose.yml`:
+
+```bash
+POSTGRES_PASSWORD='choose-a-password' docker compose up -d
+```
 
 ---
 
@@ -157,9 +165,16 @@ cd backend && mvn test
 # Backend: run tests and build the jar
 cd backend && mvn package
 
-# Frontend: type-check and production build
-cd jobhunt && npm run build
+# Frontend: unit tests
+cd jobhunt && npm run test:run
+
+# Frontend: lint, then type-check and production build
+cd jobhunt && npm run lint && npm run build
 ```
+
+The same checks run in CI on every push and pull request (`.github/workflows/ci.yml`): backend
+`mvn verify`, frontend lint + unit tests + build, and a scan that fails the build if an obvious
+credential is committed.
 
 Backend tests run against an **in-memory H2 database** in PostgreSQL compatibility mode
 (`src/test/resources/application-test.yml`), so `mvn test` needs no database server and no
@@ -173,6 +188,13 @@ real `JWT_SECRET`.
 
 Base URL: `http://localhost:8080/api`. All endpoints except register/login require
 `Authorization: Bearer <token>`.
+
+Interactive documentation (OpenAPI 3) is served by the backend itself:
+
+- Swagger UI: <http://localhost:8080/swagger-ui.html>
+- Raw spec: <http://localhost:8080/v3/api-docs>
+
+Use the **Authorize** button in Swagger UI to paste a JWT and call protected endpoints directly.
 
 ### Authentication
 
@@ -257,8 +279,8 @@ curl http://localhost:8080/api/jobs/stats -H "Authorization: Bearer <TOKEN>"
 - Interview tracking exists in the frontend types but has no backend table or endpoint yet.
 - Access tokens are stored in `localStorage`; there is no refresh-token flow or logout
   revocation (the token simply expires).
-- `ddl-auto: update` is convenient for development. Use Flyway or Liquibase before running
-  this in production.
+- The `h2/` migration is a hand-maintained twin of the `postgresql/` one, so every future schema
+  change has to be written twice.
 - Resume list endpoints load the document bytes with the entity; for large libraries move
   the files to object storage and keep only references in the database.
 - The `uuid` npm packages are no longer used by the frontend (ids come from the database).

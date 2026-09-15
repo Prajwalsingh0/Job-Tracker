@@ -19,6 +19,16 @@ The app needs the Spring Boot API from `../backend` running (see the root `READM
 | `npm run build` | Type-check (`tsc -b`) and production build |
 | `npm run preview` | Serve the production build |
 | `npm run lint` | ESLint |
+| `npm run test` | Vitest in watch mode |
+| `npm run test:run` | Vitest once (used by CI) |
+
+## Tests
+
+Unit tests use **Vitest** with **Testing Library** and jsdom. Configuration lives in
+`vitest.config.ts` (separate from `vite.config.ts` because Vitest 2 is typed against Vite 5 while
+this project uses Vite 6); the React plugin and the `@/` alias are merged in from the Vite config.
+
+Tests live next to the code as `*.test.ts` / `*.test.tsx` under `src/`.
 
 ## Configuration
 

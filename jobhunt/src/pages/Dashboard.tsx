@@ -1,5 +1,6 @@
 import { useJobs } from '@/context/JobContext';
 import { JobStats } from '@/types';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Briefcase, Send, Users, Trophy, XCircle, TrendingUp, Clock } from 'lucide-react';
 
 const EMPTY_STATS: JobStats = {
@@ -125,15 +126,7 @@ export function Dashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                      ${job.status === 'offer' ? 'bg-green-100 text-green-700' :
-                        job.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                        job.status === 'interview' ? 'bg-purple-100 text-purple-700' :
-                        job.status === 'applied' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-700'}`}
-                    >
-                      {job.status.replace('_', ' ')}
-                    </span>
+                    <StatusBadge status={job.status} />
                     <p className="text-xs text-gray-400 mt-1">
                       {new Date(job.updatedAt).toLocaleDateString()}
                     </p>

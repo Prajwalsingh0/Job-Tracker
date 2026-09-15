@@ -1,5 +1,9 @@
 # Test profile: runs the full Spring context against an in-memory H2 database in
 # PostgreSQL compatibility mode, so `mvn test` needs no external database.
+#
+# Flyway runs the same migration pipeline here as it does against PostgreSQL, using the
+# vendor-specific folder db/migration/h2. Hibernate then validates the entities against
+# the migrated schema, so a drift between the migrations and the entities fails the build.
 spring:
   datasource:
     url: jdbc:h2:mem:jobhunt-test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
@@ -7,9 +11,13 @@ spring:
     password: ""
     driver-class-name: org.h2.Driver
 
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/{vendor}
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
     open-in-view: false
     show-sql: false
 

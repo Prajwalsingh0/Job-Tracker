@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend - Maven tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B verify
+
+  frontend:
+    name: Frontend - lint, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jobhunt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: jobhunt/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Production build
+        run: npm run build
+
+  secret-scan:
+    name: No committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Cheap guard rail: fails the build if an obvious credential shows up in tracked files.
+      - name: Scan for secrets
+        run: |
+          set -e
+          PATTERNS='ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+          MATCHES=$(git ls-files -z | xargs -0 grep -nEI "$PATTERNS" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Potential secrets found in tracked files:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "No obvious secrets found."
