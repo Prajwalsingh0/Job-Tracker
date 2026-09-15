@@ -208,7 +208,8 @@ Use the **Authorize** button in Swagger UI to paste a JWT and call protected end
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/jobs?search=&status=` | List your jobs, optionally searched/filtered |
+| `GET` | `/api/jobs?search=&status=&page=&size=&sort=&direction=` | Paged job list — filtering, sorting and paging all run in the database |
+| `GET` | `/api/jobs/export?search=&status=` | CSV export of the same filtered set |
 | `GET` | `/api/jobs/{id}` | Fetch one job |
 | `POST` | `/api/jobs` | Create a job |
 | `PUT` | `/api/jobs/{id}` | Update a job |
@@ -218,6 +219,11 @@ Use the **Authorize** button in Swagger UI to paste a JWT and call protected end
 
 Job statuses: `wishlist`, `applied`, `phone_screen`, `interview`, `offer`, `rejected`,
 `withdrawn`, `ghosted`.
+
+Sorting accepts `updatedAt` (default), `createdAt`, `companyName`, `jobTitle`, `status`,
+`appliedDate` and `targetApplyDate`, with `direction=asc|desc`. Page size defaults to 20 and is
+capped at 500. Creating a job whose company **and** title already exist for the same user returns
+`409 Conflict`, which stops the same role being tracked twice by accident.
 
 ### Resumes
 

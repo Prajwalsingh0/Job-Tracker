@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, clearToken, getToken, setToken } from './api';
+import { api, ApiError, clearToken, exportJobsCsv, getToken, setToken } from './api';
 
 /** Minimal fetch double - avoids depending on any particular fetch implementation. */
 function mockResponse(options: {
@@ -120,5 +120,50 @@ describe('authenticated requests', () => {
     const error = await api.me().catch((caught) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error.status).toBe(0);
+  });
+
+  it('passes paging and sorting parameters through to the server', async () => {
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        status: 200,
+        body: { content: [], page: 2, size: 10, totalElements: 0, totalPages: 0, first: false, last: true },
+      }),
+    );
+
+    const result = await api.listJobs({ page: 2, size: 10, sort: 'companyName', direction: 'asc' });
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).toContain('page=2');
+    expect(url).toContain('size=10');
+    expect(url).toContain('sort=companyName');
+    expect(url).toContain('direction=asc');
+    expect(result.page).toBe(2);
+    expect(result.content).toEqual([]);
+  });
+});
+
+describe('exportJobsCsv', () => {
+  it('requests the export endpoint with the active filters', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) =>
+          key.toLowerCase() === 'content-disposition' ? 'attachment; filename="job-applications.csv"' : null,
+      },
+      blob: async () => new Blob(['id,companyName'], { type: 'text/csv' }),
+    } as unknown as Response);
+
+    const { fileName, blob } = await exportJobsCsv({ search: 'acme', status: 'applied' });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/api/jobs/export');
+    expect(url).toContain('search=acme');
+    expect(url).toContain('status=applied');
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(fileName).toBe('job-applications.csv');
+    // jsdom's Blob has no .text(), so assert on the blob itself instead of its contents.
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.size).toBeGreaterThan(0);
   });
 });

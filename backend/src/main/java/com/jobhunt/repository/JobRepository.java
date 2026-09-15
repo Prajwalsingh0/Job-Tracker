@@ -2,6 +2,7 @@ package com.jobhunt.repository;
 
 import com.jobhunt.entity.Job;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,13 +10,24 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
-public interface JobRepository extends JpaRepository<Job, Long> {
+/**
+ * Job persistence. Dynamic filtering/sorting/pagination goes through
+ * {@link JpaSpecificationExecutor}; the derived queries below cover the simple lookups.
+ */
+public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificationExecutor<Job> {
 
     List<Job> findByUserIdOrderByUpdatedAtDesc(Long userId);
 
     Optional<Job> findByIdAndUserId(Long id, Long userId);
 
     long countByUserId(Long userId);
+
+    /** Duplicate guard: same company + title for the same user (case-insensitive). */
+    boolean existsByUserIdAndCompanyNameIgnoreCaseAndJobTitleIgnoreCase(Long userId, String companyName, String jobTitle);
+
+    /** Same as above but excluding one job, used when updating an existing record. */
+    boolean existsByUserIdAndCompanyNameIgnoreCaseAndJobTitleIgnoreCaseAndIdNot(
+            Long userId, String companyName, String jobTitle, Long id);
 
     /** Job counts per resume, used to show "used in N applications" in the UI. */
     @Query("""

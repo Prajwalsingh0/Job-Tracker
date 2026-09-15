@@ -94,6 +94,27 @@ export interface JobStats {
   interviewRate: number;
 }
 
+/** Pagination envelope returned by list endpoints. */
+export interface PageResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+}
+
+/** Client-facing sort keys accepted by GET /api/jobs. */
+export type JobSortField =
+  | 'updatedAt'
+  | 'createdAt'
+  | 'companyName'
+  | 'jobTitle'
+  | 'status'
+  | 'appliedDate'
+  | 'targetApplyDate';
+
 // Column configuration for Kanban board
 export interface KanbanColumn {
   id: JobStatus;

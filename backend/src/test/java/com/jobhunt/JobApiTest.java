@@ -16,7 +16,9 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -29,8 +31,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Job CRUD, status transitions, search/filter, dashboard statistics, resume handling
- * and per-user data isolation.
+ * Job CRUD, paging/sorting/search, CSV export, duplicate detection, status transitions,
+ * dashboard statistics, resume handling and per-user data isolation.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -58,22 +60,24 @@ class JobApiTest {
 
     private long createJob(String token, String company, String title, String status, String location)
             throws Exception {
-        String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
-            put("companyName", company);
-            put("jobTitle", title);
-            put("status", status);
-            put("location", location);
-        }});
+        // Built with Jackson so values containing quotes or commas stay valid JSON.
+        var payload = new java.util.LinkedHashMap<String, String>();
+        payload.put("companyName", company);
+        payload.put("jobTitle", title);
+        payload.put("status", status);
+        payload.put("location", location);
 
         MvcResult result = mockMvc.perform(post("/api/jobs")
                         .header("Authorization", BEARER + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isCreated())
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }
+
+    // ------------------------------------------------------------------ CRUD
 
     @Test
     void jobLifecycleCreateReadUpdateStatusDelete() throws Exception {
@@ -110,7 +114,8 @@ class JobApiTest {
 
         mockMvc.perform(get("/api/jobs").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.totalElements").value(1));
 
         mockMvc.perform(delete("/api/jobs/{id}", id).header("Authorization", BEARER + token))
                 .andExpect(status().isNoContent());
@@ -118,6 +123,8 @@ class JobApiTest {
         mockMvc.perform(get("/api/jobs/{id}", id).header("Authorization", BEARER + token))
                 .andExpect(status().isNotFound());
     }
+
+    // -------------------------------------------------- search, sort, paging
 
     @Test
     void searchAndStatusFilterNarrowTheResultSet() throws Exception {
@@ -128,24 +135,157 @@ class JobApiTest {
 
         mockMvc.perform(get("/api/jobs").param("search", "globex").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
+                .andExpect(jsonPath("$.content", hasSize(2)));
 
         mockMvc.perform(get("/api/jobs").param("search", "remote").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
+                .andExpect(jsonPath("$.content", hasSize(2)));
 
         mockMvc.perform(get("/api/jobs").param("status", "applied").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
+                .andExpect(jsonPath("$.content", hasSize(2)));
 
         mockMvc.perform(get("/api/jobs").param("status", "offer").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].companyName").value("Globex"));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].companyName").value("Globex"));
 
         mockMvc.perform(get("/api/jobs").param("status", "not_a_status").header("Authorization", BEARER + token))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void listIsPagedAndReportsPageMetadata() throws Exception {
+        String token = registerUser("paging");
+        createJob(token, "Alpha", "Engineer", "applied", "Remote");
+        createJob(token, "Bravo", "Engineer", "applied", "Remote");
+        createJob(token, "Charlie", "Engineer", "applied", "Remote");
+
+        mockMvc.perform(get("/api/jobs")
+                        .param("size", "2")
+                        .param("sort", "companyName")
+                        .param("direction", "asc")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.first").value(true))
+                .andExpect(jsonPath("$.last").value(false))
+                .andExpect(jsonPath("$.content[0].companyName").value("Alpha"));
+
+        mockMvc.perform(get("/api/jobs")
+                        .param("page", "1")
+                        .param("size", "2")
+                        .param("sort", "companyName")
+                        .param("direction", "asc")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.last").value(true))
+                .andExpect(jsonPath("$.content[0].companyName").value("Charlie"));
+    }
+
+    @Test
+    void sortDirectionIsHonoured() throws Exception {
+        String token = registerUser("sorting");
+        createJob(token, "Alpha", "Engineer", "applied", "Remote");
+        createJob(token, "Zulu", "Engineer", "applied", "Remote");
+
+        mockMvc.perform(get("/api/jobs")
+                        .param("sort", "companyName")
+                        .param("direction", "asc")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].companyName").value("Alpha"));
+
+        mockMvc.perform(get("/api/jobs")
+                        .param("sort", "companyName")
+                        .param("direction", "desc")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].companyName").value("Zulu"));
+    }
+
+    @Test
+    void unknownSortFieldFallsBackInsteadOfFailing() throws Exception {
+        String token = registerUser("badsort");
+        createJob(token, "Alpha", "Engineer", "applied", "Remote");
+
+        mockMvc.perform(get("/api/jobs")
+                        .param("sort", "passwordHash")
+                        .param("direction", "asc")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)));
+    }
+
+    // -------------------------------------------------------------- CSV export
+
+    @Test
+    void csvExportReturnsHeaderAndRows() throws Exception {
+        String token = registerUser("csv");
+        createJob(token, "Acme, Inc", "Engineer \"Senior\"", "applied", "Remote");
+
+        mockMvc.perform(get("/api/jobs/export").header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", startsWith("text/csv")))
+                .andExpect(header().string("Content-Disposition", containsString("attachment")))
+                .andExpect(content().string(containsString("id,companyName,jobTitle,status")))
+                // A company name containing a comma must be quoted, not split into two columns.
+                .andExpect(content().string(containsString("\"Acme, Inc\"")))
+                // Embedded quotes are doubled per RFC 4180.
+                .andExpect(content().string(containsString("\"Engineer \"\"Senior\"\"\"")));
+    }
+
+    @Test
+    void csvExportHonoursTheStatusFilter() throws Exception {
+        String token = registerUser("csvfilter");
+        createJob(token, "Alpha", "Engineer", "applied", "Remote");
+        createJob(token, "Bravo", "Manager", "wishlist", "Remote");
+
+        mockMvc.perform(get("/api/jobs/export").param("status", "applied")
+                        .header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Alpha")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Bravo"))));
+    }
+
+    // ------------------------------------------------------ duplicate guard
+
+    @Test
+    void duplicateCompanyAndTitleIsRejected() throws Exception {
+        String token = registerUser("dupe");
+        createJob(token, "Acme Corp", "Backend Engineer", "applied", "Berlin");
+
+        mockMvc.perform(post("/api/jobs")
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"acme corp\",\"jobTitle\":\"backend engineer\"}"))
+                .andExpect(status().isConflict());
+
+        // A different title at the same company is fine.
+        createJob(token, "Acme Corp", "Data Engineer", "applied", "Berlin");
+    }
+
+    @Test
+    void editingAJobDoesNotTripItsOwnDuplicateGuard() throws Exception {
+        String token = registerUser("selfdupe");
+        long id = createJob(token, "Acme Corp", "Backend Engineer", "applied", "Berlin");
+
+        mockMvc.perform(put("/api/jobs/{id}", id)
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"Acme Corp\",\"jobTitle\":\"Backend Engineer\","
+                                + "\"status\":\"interview\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("interview"));
+    }
+
+    // ------------------------------------------------------------- statistics
 
     @Test
     void dashboardStatisticsMatchJobStatuses() throws Exception {
@@ -169,6 +309,8 @@ class JobApiTest {
                 .andExpect(jsonPath("$.interviewRate").value(25.0));
     }
 
+    // -------------------------------------------------------------- isolation
+
     @Test
     void jobsAreIsolatedBetweenUsers() throws Exception {
         String alice = registerUser("alice");
@@ -178,7 +320,8 @@ class JobApiTest {
 
         mockMvc.perform(get("/api/jobs").header("Authorization", BEARER + bob))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.content", hasSize(0)))
+                .andExpect(jsonPath("$.totalElements").value(0));
 
         mockMvc.perform(get("/api/jobs/{id}", aliceJobId).header("Authorization", BEARER + bob))
                 .andExpect(status().isNotFound());
@@ -189,6 +332,11 @@ class JobApiTest {
         // Alice can still see her own job.
         mockMvc.perform(get("/api/jobs/{id}", aliceJobId).header("Authorization", BEARER + alice))
                 .andExpect(status().isOk());
+
+        // Bob's CSV export cannot contain Alice's data.
+        mockMvc.perform(get("/api/jobs/export").header("Authorization", BEARER + bob))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Secret Role"))));
     }
 
     @Test
@@ -203,6 +351,8 @@ class JobApiTest {
                 .andExpect(jsonPath("$.fieldErrors.companyName").exists())
                 .andExpect(jsonPath("$.fieldErrors.jobTitle").exists());
     }
+
+    // ----------------------------------------------------------------- resumes
 
     @Test
     void resumeCanBeUploadedListedDownloadedAndAttachedToAJob() throws Exception {
@@ -253,8 +403,8 @@ class JobApiTest {
 
         mockMvc.perform(get("/api/jobs").header("Authorization", BEARER + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].resumeId").doesNotExist());
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].resumeId").doesNotExist());
     }
 
     @Test

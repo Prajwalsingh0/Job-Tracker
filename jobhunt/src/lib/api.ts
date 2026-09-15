@@ -1,4 +1,4 @@
-import type { Job, JobPayload, JobStats, JobStatus, Resume } from '@/types';
+import type { Job, JobPayload, JobSortField, JobStats, JobStatus, PageResponse, Resume } from '@/types';
 import type { AuthResponse, LoginCredentials, RegisterCredentials, User } from '@/types/auth';
 
 /**
@@ -133,14 +133,14 @@ function fileNameFromDisposition(disposition: string | null, fallback: string): 
 }
 
 /**
- * Downloads a resume with the Authorization header (a plain link/window.open cannot
- * send the bearer token) and returns it as a blob.
+ * Downloads a binary resource with the Authorization header (a plain link or
+ * window.open cannot send the bearer token) and returns it as a blob.
  */
-export async function fetchResumeFile(resume: Resume): Promise<{ blob: Blob; fileName: string }> {
+async function downloadFile(path: string, fallbackFileName: string): Promise<{ blob: Blob; fileName: string }> {
     const token = getToken();
     let response: Response;
     try {
-        response = await fetch(`${API_BASE_URL}/api/resumes/${resume.id}/download`, {
+        response = await fetch(`${API_BASE_URL}${path}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
     } catch {
@@ -154,8 +154,24 @@ export async function fetchResumeFile(resume: Resume): Promise<{ blob: Blob; fil
     const blob = await response.blob();
     return {
         blob,
-        fileName: fileNameFromDisposition(response.headers.get('Content-Disposition'), resume.fileName),
+        fileName: fileNameFromDisposition(response.headers.get('Content-Disposition'), fallbackFileName),
     };
+}
+
+/** Downloads a resume document. */
+export function fetchResumeFile(resume: Resume): Promise<{ blob: Blob; fileName: string }> {
+    return downloadFile(`/api/resumes/${resume.id}/download`, resume.fileName);
+}
+
+/** Exports the current job list as CSV, honouring the active search and status filters. */
+export function exportJobsCsv(
+    filters: { search?: string; status?: JobStatus | 'all' } = {},
+): Promise<{ blob: Blob; fileName: string }> {
+    const query = buildQuery({
+        search: filters.search,
+        status: filters.status && filters.status !== 'all' ? filters.status : undefined,
+    });
+    return downloadFile(`/api/jobs/export${query}`, 'job-applications.csv');
 }
 
 export const api = {
@@ -167,11 +183,24 @@ export const api = {
 
     me: () => request<User>('/api/auth/me'),
 
-    listJobs: (filters: { search?: string; status?: JobStatus | 'all' } = {}) =>
-        request<Job[]>(
+    listJobs: (
+        filters: {
+            search?: string;
+            status?: JobStatus | 'all';
+            page?: number;
+            size?: number;
+            sort?: JobSortField;
+            direction?: 'asc' | 'desc';
+        } = {},
+    ) =>
+        request<PageResponse<Job>>(
             `/api/jobs${buildQuery({
                 search: filters.search,
                 status: filters.status && filters.status !== 'all' ? filters.status : undefined,
+                page: filters.page === undefined ? undefined : String(filters.page),
+                size: filters.size === undefined ? undefined : String(filters.size),
+                sort: filters.sort,
+                direction: filters.direction,
             })}`,
         ),
 

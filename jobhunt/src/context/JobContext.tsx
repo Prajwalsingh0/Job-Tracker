@@ -40,12 +40,14 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
-    const [jobsResult, resumesResult, statsResult] = await Promise.all([
-      api.listJobs(),
+    const [jobsPage, resumesResult, statsResult] = await Promise.all([
+      // The board, dashboard and resume picker all need the complete set; the Jobs table
+      // does its own paged request. 500 is the server's maximum page size.
+      api.listJobs({ size: 500 }),
       api.listResumes(),
       api.jobStats(),
     ]);
-    setJobs(jobsResult);
+    setJobs(jobsPage.content);
     setResumes(resumesResult);
     setStats(statsResult);
   }, []);

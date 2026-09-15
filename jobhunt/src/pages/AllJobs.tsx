@@ -1,46 +1,134 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useJobs } from '@/context/JobContext';
-import { api } from '@/lib/api';
-import { Job, JobStatus, STATUS_LABELS } from '@/types';
+import { api, exportJobsCsv } from '@/lib/api';
+import { Job, JobSortField, JobStatus, PageResponse, STATUS_LABELS } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { JobForm } from '@/components/jobs/JobForm';
-import { Search, Plus, ExternalLink, MapPin, Calendar, FileText, Filter } from 'lucide-react';
+import {
+  Search, Plus, ExternalLink, MapPin, Calendar, FileText, Filter,
+  Download, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Loader2,
+} from 'lucide-react';
+
+const PAGE_SIZE = 10;
+
+interface SortableHeaderProps {
+  label: string;
+  field: JobSortField;
+  activeField: JobSortField;
+  direction: 'asc' | 'desc';
+  onSort: (field: JobSortField) => void;
+  className?: string;
+}
+
+function SortableHeader({ label, field, activeField, direction, onSort, className = '' }: SortableHeaderProps) {
+  const isActive = field === activeField;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      aria-label={`Sort by ${label}, currently ${isActive ? direction : 'unsorted'}`}
+      className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-wide transition-colors ${
+        isActive ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-800'
+      } ${className}`}
+    >
+      {label}
+      {isActive && (direction === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />)}
+    </button>
+  );
+}
 
 export function AllJobs() {
   const { deleteJob, getResumeById } = useJobs();
-  const [searchQuery, setSearchQuery] = useState('');
+
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [sortField, setSortField] = useState<JobSortField>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(0);
+
+  const [result, setResult] = useState<PageResponse<Job> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Searching and filtering are delegated to the backend (?search=&status=).
+  // Debounce the free-text search so every keystroke does not hit the API.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   const loadJobs = useCallback(async () => {
     setIsLoading(true);
     try {
-      const result = await api.listJobs({
-        search: searchQuery.trim() || undefined,
+      const pageResult = await api.listJobs({
+        search: search || undefined,
         status: statusFilter === 'all' ? undefined : (statusFilter as JobStatus),
+        page,
+        size: PAGE_SIZE,
+        sort: sortField,
+        direction: sortDirection,
       });
-      setJobs(result);
+
+      // Deleting the last row of the last page can leave the client past the end.
+      if (pageResult.content.length === 0 && page > 0) {
+        setPage((current) => Math.max(current - 1, 0));
+        return;
+      }
+
+      setResult(pageResult);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load jobs');
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, statusFilter]);
+  }, [search, statusFilter, page, sortField, sortDirection]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void loadJobs();
-    }, 250);
-    return () => clearTimeout(timer);
+    void loadJobs();
   }, [loadJobs]);
+
+  const handleSort = (field: JobSortField) => {
+    if (field === sortField) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setPage(0);
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const { blob, fileName } = await exportJobsCsv({
+        search: search || undefined,
+        status: statusFilter === 'all' ? undefined : (statusFilter as JobStatus),
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export jobs');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleJobClick = (job: Job) => {
     setSelectedJob(job);
@@ -82,21 +170,38 @@ export function AllJobs() {
     return Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  const jobs = result?.content ?? [];
+  const totalElements = result?.totalElements ?? 0;
+  const totalPages = result?.totalPages ?? 0;
+  const isFiltered = Boolean(search) || statusFilter !== 'all';
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">All Jobs</h1>
-          <p className="text-gray-500 mt-1">{jobs.length} jobs tracked</p>
+          <p className="text-gray-500 mt-1">
+            {totalElements} {totalElements === 1 ? 'job' : 'jobs'} tracked
+          </p>
         </div>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-        >
-          <Plus className="w-5 h-5" />
-          Add Job
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={isExporting || totalElements === 0}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+            {isExporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-5 h-5" />
+            Add Job
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -109,9 +214,10 @@ export function AllJobs() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search by company, title, or location..."
+            aria-label="Search jobs"
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
@@ -119,7 +225,11 @@ export function AllJobs() {
           <Filter className="w-5 h-5 text-gray-400" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(0);
+            }}
+            aria-label="Filter by status"
             className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
             <option value="all">All Statuses</option>
@@ -128,6 +238,15 @@ export function AllJobs() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Sort bar */}
+      <div className="flex flex-wrap items-center gap-4 px-1">
+        <SortableHeader label="Company" field="companyName" activeField={sortField} direction={sortDirection} onSort={handleSort} />
+        <SortableHeader label="Title" field="jobTitle" activeField={sortField} direction={sortDirection} onSort={handleSort} />
+        <SortableHeader label="Status" field="status" activeField={sortField} direction={sortDirection} onSort={handleSort} />
+        <SortableHeader label="Applied" field="appliedDate" activeField={sortField} direction={sortDirection} onSort={handleSort} />
+        <SortableHeader label="Updated" field="updatedAt" activeField={sortField} direction={sortDirection} onSort={handleSort} className="ml-auto" />
       </div>
 
       {/* Jobs List */}
@@ -167,7 +286,7 @@ export function AllJobs() {
                           )}
                         </div>
                         <p className="text-gray-600">{job.jobTitle}</p>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
                           {job.location && (
                             <span className="flex items-center gap-1">
                               <MapPin className="w-4 h-4" />
@@ -207,10 +326,37 @@ export function AllJobs() {
             </div>
             <p className="text-gray-600 font-medium">No jobs found</p>
             <p className="text-gray-400 text-sm mt-1">
-              {searchQuery || statusFilter !== 'all'
-                ? 'Try adjusting your search or filters'
-                : 'Add your first job to get started!'}
+              {isFiltered ? 'Try adjusting your search or filters' : 'Add your first job to get started!'}
             </p>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50">
+            <span className="text-sm text-gray-500">
+              Page {page + 1} of {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((current) => Math.max(current - 1, 0))}
+                disabled={page === 0 || isLoading}
+                aria-label="Previous page"
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((current) => current + 1)}
+                disabled={page + 1 >= totalPages || isLoading}
+                aria-label="Next page"
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>

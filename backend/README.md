@@ -166,7 +166,8 @@ Both are permitted in `SecurityConfig` (documentation only, no data access).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `?search=&status=` | — | `200 [JobDto]` |
+| GET | `?search=&status=&page=&size=&sort=&direction=` | — | `200 PageResponse<JobDto>` |
+| GET | `/export?search=&status=` | — | `200 text/csv` (UTF-8 BOM, RFC 4180 quoting) |
 | GET | `/{id}` | — | `200 JobDto` |
 | POST | `/` | JobRequest | `201 JobDto` |
 | PUT | `/{id}` | JobRequest | `200 JobDto` |
@@ -197,6 +198,11 @@ Both are permitted in `SecurityConfig` (documentation only, no data access).
 Business rules applied by the service:
 
 - `companyName` and `jobTitle` are required; optional text fields have length limits.
+- Filtering, sorting and pagination are executed in the database via JPA specifications, not in
+  memory. Sortable fields are whitelisted (`updatedAt`, `createdAt`, `companyName`, `jobTitle`,
+  `status`, `appliedDate`, `targetApplyDate`); an unknown field falls back to `updatedAt`.
+- Creating a job with a company **and** title that already exist for the user returns `409`.
+  Updating the same job excludes itself from that check.
 - A job in `wishlist` has no `appliedDate`; moving it to any other status stamps one
   (the supplied date, the previously stored one, or today).
 - `outcome` is derived from `status` (`offer`/`rejected`/`withdrawn`/`ghosted`) so the two

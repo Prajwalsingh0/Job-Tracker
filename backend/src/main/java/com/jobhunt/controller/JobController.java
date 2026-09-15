@@ -4,11 +4,16 @@ import com.jobhunt.dto.JobDto;
 import com.jobhunt.dto.JobRequest;
 import com.jobhunt.dto.JobStatsDto;
 import com.jobhunt.dto.JobStatusUpdateRequest;
+import com.jobhunt.dto.PageResponse;
 import com.jobhunt.entity.JobStatus;
 import com.jobhunt.security.UserPrincipal;
 import com.jobhunt.service.JobService;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,7 +28,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -35,18 +41,44 @@ public class JobController {
         this.jobService = jobService;
     }
 
-    /** Optional {@code search} and {@code status} query parameters filter the result set. */
+    /**
+     * Paged job list. Optional {@code search} and {@code status} filters are applied in the
+     * database, along with {@code sort}/{@code direction} and {@code page}/{@code size}.
+     */
     @GetMapping
-    public List<JobDto> list(@AuthenticationPrincipal UserPrincipal principal,
-                             @RequestParam(required = false) String search,
-                             @RequestParam(required = false) String status) {
-        JobStatus parsedStatus = StringUtils.hasText(status) ? JobStatus.fromValue(status) : null;
-        return jobService.list(principal.getId(), search, parsedStatus);
+    public PageResponse<JobDto> list(@AuthenticationPrincipal UserPrincipal principal,
+                                     @RequestParam(required = false) String search,
+                                     @RequestParam(required = false) String status,
+                                     @RequestParam(defaultValue = "0") int page,
+                                     @RequestParam(defaultValue = "20") int size,
+                                     @RequestParam(required = false) String sort,
+                                     @RequestParam(defaultValue = "desc") String direction) {
+        return jobService.list(principal.getId(), search, parseStatus(status), page, size, sort, direction);
     }
 
     @GetMapping("/stats")
     public JobStatsDto stats(@AuthenticationPrincipal UserPrincipal principal) {
         return jobService.stats(principal.getId());
+    }
+
+    /** CSV export of the caller's jobs, honouring the same search/status filters. */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export(@AuthenticationPrincipal UserPrincipal principal,
+                                         @RequestParam(required = false) String search,
+                                         @RequestParam(required = false) String status) {
+        byte[] body = jobService.exportCsv(principal.getId(), search, parseStatus(status));
+
+        String fileName = "job-applications-" + LocalDate.now() + ".csv";
+        String disposition = ContentDisposition.attachment()
+                .filename(fileName, StandardCharsets.UTF_8)
+                .build()
+                .toString();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .contentLength(body.length)
+                .body(body);
     }
 
     @GetMapping("/{id}")
@@ -79,5 +111,9 @@ public class JobController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id) {
         jobService.delete(principal.getId(), id);
+    }
+
+    private JobStatus parseStatus(String status) {
+        return StringUtils.hasText(status) ? JobStatus.fromValue(status) : null;
     }
 }
