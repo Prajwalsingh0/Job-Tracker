@@ -134,14 +134,17 @@ owner — one account can never read or modify another account's data.
 ## Security model
 
 - Passwords are hashed with **BCrypt**; the hash is never returned by the API.
-- `POST /api/auth/register` and `POST /api/auth/login` are the only public endpoints.
-- Every other request needs `Authorization: Bearer <JWT>` (HS256).
-- The signing key comes only from `JWT_SECRET`, and startup fails if it is missing or weak
-  (see "JWT secret" above).
-- Sessions are stateless — no HTTP session, no cookies.
-- A `JwtAuthenticationFilter` validates the token and loads the user on each request.
+- Access tokens are short-lived HS256 JWTs; refresh tokens are opaque 256-bit values stored only as
+  SHA-256 hashes, rotated on every use, with replay revoking the whole family.
+- The refresh token travels in an `httpOnly` cookie scoped to `/api/auth`; the access token is
+  returned in the body and kept in memory by the frontend.
+- `POST /api/auth/register`, `/login`, `/refresh` and `/logout` are the only public endpoints.
+- Every other request needs `Authorization: Bearer <JWT>`.
+- The signing key comes only from `JWT_SECRET`, and startup fails if it is missing or weak.
+- Sessions are stateless on the server apart from the refresh-token table.
 - Unauthenticated requests get a JSON `401`; forbidden ones get a JSON `403`.
-- CORS is opened only for the origins in `CORS_ALLOWED_ORIGINS`.
+- CORS is an explicit origin allow-list with credentials enabled (never `*`).
+- Uploads are verified by file signature, not by the browser-supplied content type.
 
 ## Endpoints
 
@@ -158,9 +161,16 @@ Both are permitted in `SecurityConfig` (documentation only, no data access).
 
 | Method | Path | Auth | Body | Response |
 | --- | --- | --- | --- | --- |
-| POST | `/register` | — | `{name, email, password}` | `201 {token, tokenType, user}` |
-| POST | `/login` | — | `{email, password}` | `200 {token, tokenType, user}` |
+| POST | `/register` | — | `{name, email, password}` | `201 {token, tokenType, user}` + refresh cookie |
+| POST | `/login` | — | `{email, password}` | `200 {token, tokenType, user}` + refresh cookie |
+| POST | `/refresh` | cookie | — | `200 {token, tokenType, user}` + rotated cookie |
+| POST | `/logout` | cookie | — | `204`, revoked tokens, cookie cleared |
 | GET | `/me` | Bearer | — | `200 {id, name, email}` |
+
+`/refresh` and `/logout` are driven by the `jobhunt_refresh` httpOnly cookie rather than by an
+access token, so they stay reachable after the 15-minute access token expires. `/login`,
+`/register` and `/refresh` are rate limited per client IP and answer `429` with `Retry-After` once
+the window is exhausted.
 
 ### Jobs — `/api/jobs`
 

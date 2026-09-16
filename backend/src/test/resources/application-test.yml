@@ -31,6 +31,12 @@ app:
     # Ephemeral signing key generated fresh for every test run. No secret literal is
     # stored in the repository, and `mvn test` needs no JWT_SECRET environment variable.
     secret: ${random.uuid}${random.uuid}
-    expiration-ms: 3600000
+    expiration-ms: 900000
+    refresh-expiration-ms: 3600000
+  security:
+    secure-cookies: false
+    login-rate-limit:
+      max-attempts: 1000
+      window-seconds: 60
   cors:
     allowed-origins: http://localhost:5173

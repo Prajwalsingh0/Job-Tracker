@@ -20,6 +20,8 @@ function mockResponse(options: {
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  // The access token lives in module memory, not storage, so reset it explicitly.
+  clearToken();
   localStorage.clear();
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
@@ -139,6 +141,63 @@ describe('authenticated requests', () => {
     expect(url).toContain('direction=asc');
     expect(result.page).toBe(2);
     expect(result.content).toEqual([]);
+  });
+});
+
+describe('session refresh', () => {
+  it('refreshes once, then retries the original request with the new token', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ status: 401, body: { message: 'Access token expired' } }))
+      .mockResolvedValueOnce(
+        mockResponse({
+          status: 200,
+          body: { token: 'fresh-token', tokenType: 'Bearer', user: { id: 1, name: 'A', email: 'a@b.c' } },
+        }),
+      )
+      .mockResolvedValueOnce(mockResponse({ status: 200, body: { total: 4 } }));
+
+    const stats = await api.jobStats();
+
+    expect(stats.total).toBe(4);
+    expect(getToken()).toBe('fresh-token');
+    expect(fetchMock.mock.calls[1][0]).toContain('/api/auth/refresh');
+    // The retry carries the rotated access token.
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe('Bearer fresh-token');
+  });
+
+  it('shares a single refresh between concurrent 401s', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/api/auth/refresh')) {
+        return mockResponse({
+          status: 200,
+          body: { token: 'shared-token', tokenType: 'Bearer', user: { id: 1, name: 'A', email: 'a@b.c' } },
+        });
+      }
+      // The first call for each endpoint fails; the retry succeeds.
+      return getToken()
+        ? mockResponse({ status: 200, body: { total: 1 } })
+        : mockResponse({ status: 401, body: { message: 'expired' } });
+    });
+
+    await Promise.all([api.jobStats(), api.jobStats()]);
+
+    const refreshCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/auth/refresh'));
+    expect(refreshCalls).toHaveLength(1);
+  });
+
+  it('does not attempt a refresh when login itself is rejected', async () => {
+    fetchMock.mockResolvedValue(mockResponse({ status: 401, body: { message: 'Invalid email or password' } }));
+
+    await expect(api.login({ email: 'a@b.c', password: 'wrong' })).rejects.toThrow('Invalid email or password');
+    expect(fetchMock.mock.calls).toHaveLength(1);
+  });
+
+  it('gives up when the refresh token is no longer valid', async () => {
+    setToken('stale');
+    fetchMock.mockResolvedValue(mockResponse({ status: 401, body: { message: 'Refresh token is no longer valid' } }));
+
+    await expect(api.jobStats()).rejects.toBeInstanceOf(ApiError);
+    expect(getToken()).toBeNull();
   });
 });
 

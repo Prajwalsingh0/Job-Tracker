@@ -1,6 +1,7 @@
 package com.jobhunt.service;
 
 import com.jobhunt.dto.AuthResponse;
+import com.jobhunt.dto.AuthResult;
 import com.jobhunt.dto.LoginRequest;
 import com.jobhunt.dto.RegisterRequest;
 import com.jobhunt.dto.UserDto;
@@ -19,15 +20,20 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(UserRepository userRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtService jwtService,
+                       RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public AuthResult register(RegisterRequest request) {
         String email = request.email().trim();
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("An account with this email already exists");
@@ -38,12 +44,11 @@ public class AuthService {
                 email,
                 passwordEncoder.encode(request.password()));
 
-        User saved = userRepository.save(user);
-        return buildResponse(saved);
+        return issueTokens(userRepository.save(user));
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
+    @Transactional
+    public AuthResult login(LoginRequest request) {
         User user = userRepository.findByEmailIgnoreCase(request.email().trim())
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
@@ -51,7 +56,30 @@ public class AuthService {
             throw new BadCredentialsException("Invalid email or password");
         }
 
-        return buildResponse(user);
+        return issueTokens(user);
+    }
+
+    /**
+     * Exchanges a valid refresh token for a new access token, rotating the refresh token
+     * at the same time.
+     */
+    @Transactional
+    public AuthResult refresh(String rawRefreshToken) {
+        RefreshTokenService.Rotation rotation = refreshTokenService.rotate(rawRefreshToken);
+        User user = userRepository.findById(rotation.userId())
+                .orElseThrow(() -> new BadCredentialsException("Refresh token is no longer valid"));
+
+        String accessToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getName());
+        return new AuthResult(
+                AuthResponse.of(accessToken, toDto(user)),
+                rotation.refreshToken(),
+                refreshTokenService.getRefreshTtlMs());
+    }
+
+    /** Logout: revokes every refresh token held by the owner of the supplied token. */
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        refreshTokenService.revokeByRawToken(rawRefreshToken);
     }
 
     @Transactional(readOnly = true)
@@ -61,9 +89,13 @@ public class AuthService {
         return toDto(user);
     }
 
-    private AuthResponse buildResponse(User user) {
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getName());
-        return AuthResponse.of(token, toDto(user));
+    private AuthResult issueTokens(User user) {
+        String accessToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getName());
+        String refreshToken = refreshTokenService.issue(user);
+        return new AuthResult(
+                AuthResponse.of(accessToken, toDto(user)),
+                refreshToken,
+                refreshTokenService.getRefreshTtlMs());
     }
 
     private UserDto toDto(User user) {

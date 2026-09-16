@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
-import { api, clearToken, getToken, setToken } from '@/lib/api';
+import { api, clearToken, setToken } from '@/lib/api';
 import { User, LoginCredentials, RegisterCredentials, AuthState } from '../types/auth';
 
 interface AuthContextType extends AuthState {
@@ -15,16 +15,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Restore the session from the stored JWT on first load.
+    // Restore the session on first load. The access token is gone after a reload (it is
+    // kept in memory only), so /me is expected to 401 once - the API client silently
+    // exchanges the httpOnly refresh cookie for a new token and retries.
     useEffect(() => {
         let cancelled = false;
 
         const restoreSession = async () => {
-            if (!getToken()) {
-                setIsLoading(false);
-                return;
-            }
-
             try {
                 const currentUser = await api.me();
                 if (!cancelled) {
@@ -76,9 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const logout = useCallback(() => {
+        // Clear local state immediately, then tell the server to revoke the refresh token.
         clearToken();
         setUser(null);
         setError(null);
+        void api.logout().catch(() => {
+            // The session is already gone locally; a failed revoke must not block the UI.
+        });
     }, []);
 
     return (

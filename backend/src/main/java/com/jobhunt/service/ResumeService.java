@@ -27,6 +27,9 @@ public class ResumeService {
     private static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(PDF, DOCX);
 
+    private static final byte[] PDF_MAGIC = {'%', 'P', 'D', 'F', '-'};
+    private static final byte[] ZIP_MAGIC = {0x50, 0x4B, 0x03, 0x04};
+
     private final ResumeRepository resumeRepository;
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
@@ -71,12 +74,40 @@ public class ResumeService {
         resume.setVersionTag(StringUtils.hasText(versionTag) ? versionTag.trim() : null);
 
         try {
-            resume.setFileData(file.getBytes());
+            byte[] bytes = file.getBytes();
+
+            // The browser-supplied Content-Type is not trustworthy: confirm the bytes really
+            // are the format the file claims to be before storing anything.
+            validateMagicBytes(bytes, resume.getFileType());
+
+            resume.setFileData(bytes);
+            resume.setFileSize(bytes.length);
         } catch (IOException ex) {
             throw new IllegalStateException("Could not read the uploaded file", ex);
         }
 
         return toDto(resumeRepository.save(resume), 0L);
+    }
+
+    /**
+     * PDF files start with {@code %PDF-}; DOCX is a ZIP container starting with
+     * {@code PK\x03\x04}. Checking the signature stops a renamed executable being stored
+     * as a "resume".
+     */
+    private void validateMagicBytes(byte[] bytes, ResumeFileType fileType) {
+        byte[] expected = fileType == ResumeFileType.PDF ? PDF_MAGIC : ZIP_MAGIC;
+
+        if (bytes.length < expected.length) {
+            throw new IllegalArgumentException("The uploaded file is empty or truncated");
+        }
+
+        for (int i = 0; i < expected.length; i++) {
+            if (bytes[i] != expected[i]) {
+                throw new IllegalArgumentException(fileType == ResumeFileType.PDF
+                        ? "The file does not appear to be a valid PDF"
+                        : "The file does not appear to be a valid DOCX document");
+            }
+        }
     }
 
     @Transactional(readOnly = true)

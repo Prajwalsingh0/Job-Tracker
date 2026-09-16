@@ -7,18 +7,24 @@ import type { AuthResponse, LoginCredentials, RegisterCredentials, User } from '
  */
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
 
-const TOKEN_STORAGE_KEY = 'jobhunt_token';
+/**
+ * The access token is held in memory only - never in localStorage or sessionStorage - so an
+ * injected script cannot read it back from storage. Sessions survive a page reload because
+ * the refresh token lives in an httpOnly cookie that JavaScript cannot see, and a 401 on
+ * the first request transparently triggers a refresh.
+ */
+let accessToken: string | null = null;
 
 export function getToken(): string | null {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
+    return accessToken;
 }
 
-export function setToken(token: string): void {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+export function setToken(token: string | null): void {
+    accessToken = token;
 }
 
 export function clearToken(): void {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    accessToken = null;
 }
 
 interface ApiErrorPayload {
@@ -60,17 +66,58 @@ async function toApiError(response: Response): Promise<ApiError> {
     return new ApiError(message, response.status, payload?.fieldErrors ?? null);
 }
 
+/** Endpoints whose 401 means "bad credentials", not "expired access token". */
+const AUTH_PATHS = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/logout'];
+
+function isAuthPath(path: string): boolean {
+    return AUTH_PATHS.some((authPath) => path.startsWith(authPath));
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Exchanges the httpOnly refresh cookie for a new access token. Concurrent callers share a
+ * single in-flight request so a burst of 401s does not rotate the token repeatedly.
+ */
+function attemptRefresh(): Promise<boolean> {
+    if (refreshInFlight) {
+        return refreshInFlight;
+    }
+
+    refreshInFlight = (async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (!response.ok) {
+                accessToken = null;
+                return false;
+            }
+            const body = (await response.json()) as AuthResponse;
+            accessToken = body.token ?? null;
+            return accessToken !== null;
+        } catch {
+            accessToken = null;
+            return false;
+        }
+    })().finally(() => {
+        refreshInFlight = null;
+    });
+
+    return refreshInFlight;
+}
+
 interface RequestOptions {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     formData?: FormData;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, options: RequestOptions = {}, allowRetry = true): Promise<T> {
     const headers: Record<string, string> = {};
-    const token = getToken();
-    if (token) {
-        headers.Authorization = `Bearer ${token}`;
+    if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
     }
 
     let body: BodyInit | undefined;
@@ -88,16 +135,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             method: options.method ?? 'GET',
             headers,
             body,
+            // Required so the httpOnly refresh cookie is sent.
+            credentials: 'include',
         });
     } catch {
         throw new ApiError('Could not reach the API server. Is the backend running?', 0);
     }
 
-    if (!response.ok) {
-        // An expired/invalid token means the stored session is no longer usable.
-        if (response.status === 401 && token) {
-            clearToken();
+    // An expired access token is transparent to callers: refresh once, then retry.
+    if (response.status === 401 && allowRetry && !isAuthPath(path)) {
+        const refreshed = await attemptRefresh();
+        if (refreshed) {
+            return request<T>(path, options, false);
         }
+        clearToken();
+        throw await toApiError(response);
+    }
+
+    if (!response.ok) {
         throw await toApiError(response);
     }
 
@@ -133,15 +188,15 @@ function fileNameFromDisposition(disposition: string | null, fallback: string): 
 }
 
 /**
- * Downloads a binary resource with the Authorization header (a plain link or
- * window.open cannot send the bearer token) and returns it as a blob.
+ * Downloads a binary resource with the Authorization header and the refresh cookie
+ * (a plain link or window.open cannot send either) and returns it as a blob.
  */
 async function downloadFile(path: string, fallbackFileName: string): Promise<{ blob: Blob; fileName: string }> {
-    const token = getToken();
     let response: Response;
     try {
         response = await fetch(`${API_BASE_URL}${path}`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+            credentials: 'include',
         });
     } catch {
         throw new ApiError('Could not reach the API server. Is the backend running?', 0);
@@ -175,11 +230,20 @@ export function exportJobsCsv(
 }
 
 export const api = {
-    register: (credentials: RegisterCredentials) =>
-        request<AuthResponse>('/api/auth/register', { method: 'POST', body: credentials }),
+    register: async (credentials: RegisterCredentials) => {
+        const response = await request<AuthResponse>('/api/auth/register', { method: 'POST', body: credentials });
+        accessToken = response.token;
+        return response;
+    },
 
-    login: (credentials: LoginCredentials) =>
-        request<AuthResponse>('/api/auth/login', { method: 'POST', body: credentials }),
+    login: async (credentials: LoginCredentials) => {
+        const response = await request<AuthResponse>('/api/auth/login', { method: 'POST', body: credentials });
+        accessToken = response.token;
+        return response;
+    },
+
+    /** Revokes the refresh token server-side and clears the cookie. */
+    logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
     me: () => request<User>('/api/auth/me'),
 
