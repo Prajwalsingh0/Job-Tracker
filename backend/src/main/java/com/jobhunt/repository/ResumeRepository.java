@@ -13,4 +13,10 @@ public interface ResumeRepository extends JpaRepository<Resume, Long> {
     Optional<Resume> findByIdAndUserId(Long id, Long userId);
 
     long countByUserId(Long userId);
+
+    /**
+     * Rows that still hold their document in the database. Used once by the startup
+     * backfill that moves legacy blobs into file storage.
+     */
+    List<Resume> findByStorageKeyIsNullAndFileDataIsNotNull();
 }

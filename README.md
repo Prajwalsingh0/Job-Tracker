@@ -18,7 +18,7 @@ Spring Boot API.
 | Users stored in `localStorage`, passwords in plain text | Users in PostgreSQL, passwords hashed with BCrypt |
 | "Login" compared strings in the browser | JWT bearer tokens issued by the API, verified per request |
 | Jobs/resumes stored in `localStorage` | Relational tables (`users`, `jobs`, `resumes`), scoped per user |
-| Resume files as base64 strings in the browser | Uploaded via multipart, stored in the database, served by a download endpoint |
+| Resume files as base64 strings in the browser | Uploaded via multipart, signature-checked, written to file storage and streamed back by a download endpoint |
 | Dashboard stats computed in the browser | Computed by `GET /api/jobs/stats` |
 | Client-side search/filter | `GET /api/jobs?search=&status=` |
 
@@ -109,6 +109,7 @@ Configuration is read from environment variables:
 | `JWT_EXPIRATION_MS` | `900000` (15 min) | Access-token lifetime |
 | `JWT_REFRESH_EXPIRATION_MS` | `2592000000` (30 days) | Refresh-token lifetime |
 | `SECURE_COOKIES` | `false` | Set to `true` over HTTPS so the refresh cookie is `Secure` |
+| `STORAGE_ROOT` | `./data/uploads` | Directory where uploaded documents are written (git-ignored) |
 | `LOGIN_RATE_LIMIT_MAX` | `10` | Attempts allowed per window on the credential endpoints |
 | `LOGIN_RATE_LIMIT_WINDOW` | `900` | Rate-limit window in seconds |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/jobhunt` | JDBC URL |

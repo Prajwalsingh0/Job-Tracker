@@ -63,10 +63,14 @@ public class Resume {
     @Column(name = "file_size", nullable = false)
     private long fileSize;
 
-    // Explicitly mapped to a binary column (PostgreSQL: bytea, H2: binary varying) so the
-    // schema stays portable and never resolves to a large-object / BLOB column.
+    /** Key in the file storage backend. Null only for rows awaiting the legacy backfill. */
+    @Column(name = "storage_key", length = 255)
+    private String storageKey;
+
+    // Legacy column: documents used to live in the database. It is kept nullable so the
+    // startup backfill can move existing rows into storage without losing data.
     @JdbcTypeCode(SqlTypes.VARBINARY)
-    @Column(name = "file_data", nullable = false, length = FILE_DATA_COLUMN_LENGTH)
+    @Column(name = "file_data", length = FILE_DATA_COLUMN_LENGTH)
     private byte[] fileData;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -152,6 +156,14 @@ public class Resume {
 
     public void setFileData(byte[] fileData) {
         this.fileData = fileData;
+    }
+
+    public String getStorageKey() {
+        return storageKey;
+    }
+
+    public void setStorageKey(String storageKey) {
+        this.storageKey = storageKey;
     }
 
     public Instant getCreatedAt() {

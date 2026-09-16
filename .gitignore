@@ -13,6 +13,10 @@ dist-ssr/
 *.war
 *.class
 
+# ---- Uploaded documents (storage root) ----
+backend/data/
+data/
+
 # ---- Logs and OS / editor noise ----
 *.log
 npm-debug.log*

@@ -44,6 +44,10 @@ app:
     secret: ${JWT_SECRET:}
     expiration-ms: ${JWT_EXPIRATION_MS:900000}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:2592000000}
+  storage:
+    # Where uploaded documents are written. Relative paths resolve against the working
+    # directory; use an absolute path (or swap in object storage) in production.
+    root: ${STORAGE_ROOT:./data/uploads}
   security:
     # Set to true when the API is served over HTTPS so refresh cookies are Secure-only.
     secure-cookies: ${SECURE_COOKIES:false}

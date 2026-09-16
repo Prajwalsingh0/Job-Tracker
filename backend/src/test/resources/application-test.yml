@@ -33,6 +33,9 @@ app:
     secret: ${random.uuid}${random.uuid}
     expiration-ms: 900000
     refresh-expiration-ms: 3600000
+  storage:
+    # Written under target/ so `mvn clean` wipes uploaded test fixtures.
+    root: ./target/test-uploads
   security:
     secure-cookies: false
     login-rate-limit:

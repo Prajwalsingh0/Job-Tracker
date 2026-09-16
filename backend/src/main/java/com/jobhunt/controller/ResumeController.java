@@ -5,6 +5,7 @@ import com.jobhunt.entity.Resume;
 import com.jobhunt.entity.ResumeFileType;
 import com.jobhunt.security.UserPrincipal;
 import com.jobhunt.service.ResumeService;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,9 +53,10 @@ public class ResumeController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> download(@AuthenticationPrincipal UserPrincipal principal,
-                                           @PathVariable Long id) {
-        Resume resume = resumeService.download(principal.getId(), id);
+    public ResponseEntity<Resource> download(@AuthenticationPrincipal UserPrincipal principal,
+                                             @PathVariable Long id) {
+        ResumeService.ResumeDocument document = resumeService.download(principal.getId(), id);
+        Resume resume = document.resume();
 
         MediaType mediaType = resume.getFileType() == ResumeFileType.PDF
                 ? MediaType.APPLICATION_PDF
@@ -65,11 +67,12 @@ public class ResumeController {
                 .build()
                 .toString();
 
+        // Streams from storage rather than buffering the document in memory.
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
                 .contentType(mediaType)
                 .contentLength(resume.getFileSize())
-                .body(resume.getFileData());
+                .body(document.resource());
     }
 
     @DeleteMapping("/{id}")

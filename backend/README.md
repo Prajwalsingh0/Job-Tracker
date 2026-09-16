@@ -243,10 +243,35 @@ Business rules applied by the service:
 | GET | `/{id}/download` | — | `200` file bytes with `Content-Disposition` |
 | DELETE | `/{id}` | — | `204` |
 
-Uploads accept **PDF and DOCX only**, up to 10 MB. Deleting a resume detaches it from any
-job that referenced it; the jobs themselves are kept.
+Uploads accept **PDF and DOCX only**, up to 10 MB, and the bytes are verified against the file
+signature (`%PDF-` or `PK\x03\x04`) rather than trusting the browser content type. Documents are
+written to file storage (see below) and downloads are streamed. Deleting a resume removes the
+stored file and detaches it from any job that referenced it; the jobs themselves are kept.
 
-## Error format
+## File storage
+
+Document bytes are **not** stored in the database. `FileStorageService` is the seam:
+
+| Member | Purpose |
+| --- | --- |
+| `store(bytes, fileName)` | Writes the content and returns an opaque key |
+| `loadAsResource(key)` | Returns a Spring `Resource`, so downloads stream instead of buffering |
+| `delete(key)` | Removes the file; missing files are ignored |
+
+The default implementation is `LocalFileStorageService`, which writes under `STORAGE_ROOT`
+(default `./data/uploads`, git-ignored) using a generated UUID name — the user-supplied file name
+never influences the path. Keys are resolved inside the root and anything that escapes it is
+rejected, so a crafted key cannot read or write arbitrary files.
+
+Because the column no longer holds content, listing resumes is a metadata-only query. Swapping in
+object storage means adding another `FileStorageService` implementation; no service code changes.
+
+### Legacy blob backfill
+
+Older rows may still hold their document in the `file_data` column. A startup runner moves them into
+file storage and clears the column. It is idempotent, only selects rows with bytes and no storage
+key, and a failure is logged as a warning rather than blocking startup so the next run can retry.
+
 
 ```json
 {
