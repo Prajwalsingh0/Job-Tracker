@@ -225,6 +225,12 @@ Sorting accepts `updatedAt` (default), `createdAt`, `companyName`, `jobTitle`, `
 capped at 500. Creating a job whose company **and** title already exist for the same user returns
 `409 Conflict`, which stops the same role being tracked twice by accident.
 
+Each job also carries work mode, a deadline, a source, a structured base salary
+(`salaryMin`/`salaryMax`/`salaryCurrency`) and free-form tags. Two more endpoints expose the audit
+trail: `GET /api/jobs/{id}/history` (a single job's pipeline timeline, oldest first) and
+`GET /api/jobs/activity` (recent transitions across all your jobs, newest first) — the dashboard's
+Recent Activity panel is built from the latter.
+
 ### Resumes
 
 | Method | Path | Description |

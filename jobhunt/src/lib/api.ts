@@ -1,4 +1,4 @@
-import type { Job, JobPayload, JobSortField, JobStats, JobStatus, PageResponse, Resume } from '@/types';
+import type { Job, JobPayload, JobSortField, JobStats, JobStatus, JobStatusHistoryEntry, PageResponse, Resume } from '@/types';
 import type { AuthResponse, LoginCredentials, RegisterCredentials, User } from '@/types/auth';
 
 /**
@@ -205,6 +205,12 @@ export const api = {
         ),
 
     jobStats: () => request<JobStats>('/api/jobs/stats'),
+
+    /** Pipeline transitions for a single job, oldest first. */
+    jobHistory: (id: number) => request<JobStatusHistoryEntry[]>(`/api/jobs/${id}/history`),
+
+    /** Recent transitions across all of the user's jobs, newest first. */
+    recentActivity: () => request<JobStatusHistoryEntry[]>('/api/jobs/activity'),
 
     createJob: (payload: JobPayload) => request<Job>('/api/jobs', { method: 'POST', body: payload }),
 

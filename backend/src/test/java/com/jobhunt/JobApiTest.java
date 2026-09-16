@@ -438,4 +438,132 @@ class JobApiTest {
                         .content("{\"companyName\":\"Acme\",\"jobTitle\":\"Engineer\",\"resumeId\":" + resumeId + "}"))
                 .andExpect(status().isNotFound());
     }
+
+    // ---------------------------------------------------- new job details
+
+    @Test
+    void jobDetailsRoundTripAndTagsAreNormalised() throws Exception {
+        String token = registerUser("details");
+
+        mockMvc.perform(post("/api/jobs")
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"Acme\",\"jobTitle\":\"Engineer\",\"status\":\"applied\","
+                                + "\"workMode\":\"hybrid\",\"deadline\":\"2026-10-01\",\"jobSource\":\"LinkedIn\","
+                                + "\"salaryMin\":90000,\"salaryMax\":120000,\"salaryCurrency\":\"usd\","
+                                + "\"tags\":[\"referral\",\" dream job \",\"referral\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.workMode").value("hybrid"))
+                .andExpect(jsonPath("$.deadline").value("2026-10-01"))
+                .andExpect(jsonPath("$.jobSource").value("LinkedIn"))
+                .andExpect(jsonPath("$.salaryMin").value(90000))
+                .andExpect(jsonPath("$.salaryMax").value(120000))
+                // Currency is upper-cased on the way in.
+                .andExpect(jsonPath("$.salaryCurrency").value("USD"))
+                // Trimmed, de-duplicated and sorted.
+                .andExpect(jsonPath("$.tags", hasSize(2)))
+                .andExpect(jsonPath("$.tags[0]").value("dream job"))
+                .andExpect(jsonPath("$.tags[1]").value("referral"));
+    }
+
+    @Test
+    void salaryRangeIsValidated() throws Exception {
+        String token = registerUser("salary");
+
+        mockMvc.perform(post("/api/jobs")
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"Acme\",\"jobTitle\":\"Engineer\","
+                                + "\"salaryMin\":200000,\"salaryMax\":100000}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unknownWorkModeIsRejected() throws Exception {
+        String token = registerUser("workmode");
+
+        mockMvc.perform(post("/api/jobs")
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"Acme\",\"jobTitle\":\"Engineer\",\"workMode\":\"teleport\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ------------------------------------------------------ status history
+
+    @Test
+    void statusChangesAreRecordedAsHistory() throws Exception {
+        String token = registerUser("history");
+        long id = createJob(token, "Acme Corp", "Backend Engineer", "wishlist", "Berlin");
+
+        mockMvc.perform(patch("/api/jobs/{id}/status", id)
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"applied\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/jobs/{id}/status", id)
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"interview\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/jobs/{id}/history", id).header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                // Creation has no previous status.
+                .andExpect(jsonPath("$[0].fromStatus").doesNotExist())
+                .andExpect(jsonPath("$[0].toStatus").value("wishlist"))
+                .andExpect(jsonPath("$[1].fromStatus").value("wishlist"))
+                .andExpect(jsonPath("$[1].toStatus").value("applied"))
+                .andExpect(jsonPath("$[2].fromStatus").value("applied"))
+                .andExpect(jsonPath("$[2].toStatus").value("interview"));
+    }
+
+    @Test
+    void settingTheSameStatusDoesNotAddAHistoryRow() throws Exception {
+        String token = registerUser("nohistory");
+        long id = createJob(token, "Acme Corp", "Backend Engineer", "applied", "Berlin");
+
+        mockMvc.perform(patch("/api/jobs/{id}/status", id)
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"applied\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/jobs/{id}/history", id).header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void activityFeedReturnsNewestFirst() throws Exception {
+        String token = registerUser("activity");
+        long id = createJob(token, "Acme Corp", "Backend Engineer", "applied", "Berlin");
+
+        mockMvc.perform(patch("/api/jobs/{id}/status", id)
+                        .header("Authorization", BEARER + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"offer\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/jobs/activity").header("Authorization", BEARER + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].toStatus").value("offer"))
+                .andExpect(jsonPath("$[1].toStatus").value("applied"));
+    }
+
+    @Test
+    void historyIsIsolatedBetweenUsers() throws Exception {
+        String alice = registerUser("hist-alice");
+        String bob = registerUser("hist-bob");
+        long aliceJob = createJob(alice, "Alice Corp", "Secret Role", "applied", "Remote");
+
+        mockMvc.perform(get("/api/jobs/{id}/history", aliceJob).header("Authorization", BEARER + bob))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/jobs/activity").header("Authorization", BEARER + bob))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
 }

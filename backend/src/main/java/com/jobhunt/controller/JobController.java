@@ -3,6 +3,7 @@ package com.jobhunt.controller;
 import com.jobhunt.dto.JobDto;
 import com.jobhunt.dto.JobRequest;
 import com.jobhunt.dto.JobStatsDto;
+import com.jobhunt.dto.JobStatusHistoryDto;
 import com.jobhunt.dto.JobStatusUpdateRequest;
 import com.jobhunt.dto.PageResponse;
 import com.jobhunt.entity.JobStatus;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -79,6 +81,17 @@ public class JobController {
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .contentLength(body.length)
                 .body(body);
+    }
+
+    @GetMapping("/activity")
+    public List<JobStatusHistoryDto> activity(@AuthenticationPrincipal UserPrincipal principal) {
+        return jobService.recentActivity(principal.getId());
+    }
+
+    @GetMapping("/{id}/history")
+    public List<JobStatusHistoryDto> history(@AuthenticationPrincipal UserPrincipal principal,
+                                             @PathVariable Long id) {
+        return jobService.history(principal.getId(), id);
     }
 
     @GetMapping("/{id}")

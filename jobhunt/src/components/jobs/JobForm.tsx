@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Job, JobPayload, JobStatus, OutcomeReason, STATUS_LABELS } from '@/types';
+import { Job, JobPayload, JobStatus, JobStatusHistoryEntry, OutcomeReason, STATUS_LABELS, WorkMode } from '@/types';
 import { useJobs } from '@/context/JobContext';
-import { Building2, Briefcase, Link, MapPin, DollarSign, FileText, Calendar, Save, Trash2, Upload } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Building2, Briefcase, Link, MapPin, DollarSign, FileText, Calendar, Save, Trash2, Upload, Tags, History } from 'lucide-react';
 
 interface JobFormProps {
   job?: Job;
@@ -27,11 +28,47 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
     feedback: '',
     notes: '',
     resumeId: '',
+    workMode: '',
+    deadline: '',
+    jobSource: '',
+    salaryMin: '',
+    salaryMax: '',
+    salaryCurrency: 'USD',
+    tagsInput: '',
   });
 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const [history, setHistory] = useState<JobStatusHistoryEntry[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // The pipeline timeline only makes sense for a job that already exists.
+  useEffect(() => {
+    if (!job) {
+      setHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingHistory(true);
+
+    api.jobHistory(job.id)
+      .then((entries) => {
+        if (!cancelled) setHistory(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [job]);
 
   useEffect(() => {
     if (job) {
@@ -49,6 +86,13 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
         feedback: job.feedback || '',
         notes: job.notes || '',
         resumeId: job.resumeId ? String(job.resumeId) : '',
+        workMode: job.workMode ?? '',
+        deadline: job.deadline ?? '',
+        jobSource: job.jobSource ?? '',
+        salaryMin: job.salaryMin ? String(job.salaryMin) : '',
+        salaryMax: job.salaryMax ? String(job.salaryMax) : '',
+        salaryCurrency: job.salaryCurrency ?? 'USD',
+        tagsInput: (job.tags ?? []).join(', '),
       });
     }
   }, [job]);
@@ -109,6 +153,13 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
         outcomeReason: formData.outcomeReason || undefined,
         feedback: formData.feedback || undefined,
         notes: formData.notes || undefined,
+        workMode: formData.workMode ? (formData.workMode as WorkMode) : undefined,
+        deadline: formData.deadline || undefined,
+        jobSource: formData.jobSource || undefined,
+        salaryMin: formData.salaryMin ? Number(formData.salaryMin) : undefined,
+        salaryMax: formData.salaryMax ? Number(formData.salaryMax) : undefined,
+        salaryCurrency: formData.salaryCurrency || undefined,
+        tags: formData.tagsInput.split(',').map((tag) => tag.trim()).filter(Boolean),
         resumeId,
       };
 
@@ -185,6 +236,73 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
         <input type="text" name="salaryRange" value={formData.salaryRange} onChange={handleChange}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           placeholder="e.g. $120k - $150k" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Work Mode</label>
+          <select name="workMode" value={formData.workMode} onChange={handleChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <option value="">Not specified</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="onsite">On-site</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Job Source</label>
+          <input type="text" name="jobSource" value={formData.jobSource} onChange={handleChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            placeholder="e.g. LinkedIn, referral" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            <Calendar className="w-4 h-4 inline mr-1" />
+            Deadline
+          </label>
+          <input type="date" name="deadline" value={formData.deadline} onChange={handleChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Base salary (optional)</label>
+        <div className="flex items-center gap-2">
+          <select name="salaryCurrency" value={formData.salaryCurrency} onChange={handleChange}
+            aria-label="Salary currency"
+            className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            {['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD'].map((code) => (
+              <option key={code} value={code}>{code}</option>
+            ))}
+          </select>
+          <input type="number" min="0" name="salaryMin" value={formData.salaryMin} onChange={handleChange}
+            aria-label="Minimum salary" placeholder="Min"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+          <span className="text-gray-400">to</span>
+          <input type="number" min="0" name="salaryMax" value={formData.salaryMax} onChange={handleChange}
+            aria-label="Maximum salary" placeholder="Max"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+        <p className="mt-1 text-xs text-gray-400">Structured numbers in the selected currency; the free-text range above stays visible in lists.</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          <Tags className="w-4 h-4 inline mr-1" />
+          Tags
+        </label>
+        <input type="text" name="tagsInput" value={formData.tagsInput} onChange={handleChange}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          placeholder="Comma separated, e.g. referral, dream job, remote-friendly" />
+        {formData.tagsInput.trim() && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {formData.tagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+              <span key={tag} className="inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -286,6 +404,36 @@ export function JobForm({ job, initialStatus = 'wishlist', onSave, onDelete }: J
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           placeholder="Why you're interested, contacts, etc." />
       </div>
+
+      {job && (
+        <div className="border-t pt-4">
+          <h4 className="flex items-center gap-2 font-medium text-gray-900 mb-3">
+            <History className="w-4 h-4" />
+            Status History
+          </h4>
+          {isLoadingHistory ? (
+            <p className="text-sm text-gray-400">Loading history...</p>
+          ) : history.length > 0 ? (
+            <ol className="space-y-3">
+              {history.map((entry) => (
+                <li key={entry.id} className="flex items-start gap-3">
+                  <span className="mt-1.5 w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-gray-900">
+                      {entry.fromStatus
+                        ? `${STATUS_LABELS[entry.fromStatus]} to ${STATUS_LABELS[entry.toStatus]}`
+                        : `Created as ${STATUS_LABELS[entry.toStatus]}`}
+                    </p>
+                    <p className="text-xs text-gray-400">{new Date(entry.changedAt).toLocaleString()}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-gray-400">No transitions recorded yet.</p>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-4 border-t">
         {job && onDelete && (

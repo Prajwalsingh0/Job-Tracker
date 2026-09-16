@@ -2,10 +2,13 @@ package com.jobhunt.dto;
 
 import com.jobhunt.entity.JobStatus;
 import com.jobhunt.entity.OutcomeReason;
+import com.jobhunt.entity.WorkMode;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
  * Create/update payload for a job. {@code outcome} is intentionally not accepted here:
@@ -45,6 +48,25 @@ public record JobRequest(
 
         @Size(max = 10000, message = "Notes must be at most 10000 characters")
         String notes,
+
+        @Size(max = 100, message = "Job source must be at most 100 characters")
+        String jobSource,
+
+        WorkMode workMode,
+
+        LocalDate deadline,
+
+        @PositiveOrZero(message = "Minimum salary cannot be negative")
+        Long salaryMin,
+
+        @PositiveOrZero(message = "Maximum salary cannot be negative")
+        Long salaryMax,
+
+        @Size(max = 3, message = "Currency code must be at most 3 characters")
+        String salaryCurrency,
+
+        @Size(max = 20, message = "A job can have at most 20 tags")
+        Set<@Size(max = 50, message = "Each tag must be at most 50 characters") String> tags,
 
         Long resumeId
 ) {

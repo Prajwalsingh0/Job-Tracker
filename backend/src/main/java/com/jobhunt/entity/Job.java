@@ -1,6 +1,8 @@
 package com.jobhunt.entity;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -18,6 +20,8 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * A single tracked job application. Every row is owned by exactly one {@link User}
@@ -83,6 +87,35 @@ public class Job {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resume_id")
     private Resume resume;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "work_mode", length = 20)
+    private WorkMode workMode;
+
+    /** Date by which to apply, or by which a pending step should be done. */
+    @Column(name = "deadline")
+    private LocalDate deadline;
+
+    /** Where the listing came from, e.g. "LinkedIn" or "referral". */
+    @Column(name = "job_source", length = 100)
+    private String jobSource;
+
+    @Column(name = "salary_min")
+    private Long salaryMin;
+
+    @Column(name = "salary_max")
+    private Long salaryMax;
+
+    /** ISO 4217 code such as "USD". */
+    @Column(name = "salary_currency", length = 3)
+    private String salaryCurrency;
+
+    /** Free-form labels, stored in the job_tags collection table. */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "job_tags", joinColumns = @JoinColumn(name = "job_id"))
+    @Column(name = "tag", nullable = false, length = 50)
+    private Set<String> tags = new LinkedHashSet<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -249,5 +282,61 @@ public class Job {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public WorkMode getWorkMode() {
+        return workMode;
+    }
+
+    public void setWorkMode(WorkMode workMode) {
+        this.workMode = workMode;
+    }
+
+    public LocalDate getDeadline() {
+        return deadline;
+    }
+
+    public void setDeadline(LocalDate deadline) {
+        this.deadline = deadline;
+    }
+
+    public String getJobSource() {
+        return jobSource;
+    }
+
+    public void setJobSource(String jobSource) {
+        this.jobSource = jobSource;
+    }
+
+    public Long getSalaryMin() {
+        return salaryMin;
+    }
+
+    public void setSalaryMin(Long salaryMin) {
+        this.salaryMin = salaryMin;
+    }
+
+    public Long getSalaryMax() {
+        return salaryMax;
+    }
+
+    public void setSalaryMax(Long salaryMax) {
+        this.salaryMax = salaryMax;
+    }
+
+    public String getSalaryCurrency() {
+        return salaryCurrency;
+    }
+
+    public void setSalaryCurrency(String salaryCurrency) {
+        this.salaryCurrency = salaryCurrency;
+    }
+
+    public Set<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(Set<String> tags) {
+        this.tags = tags == null ? new LinkedHashSet<>() : new LinkedHashSet<>(tags);
     }
 }

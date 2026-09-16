@@ -174,6 +174,8 @@ Both are permitted in `SecurityConfig` (documentation only, no data access).
 | PATCH | `/{id}/status` | `{status}` | `200 JobDto` |
 | DELETE | `/{id}` | — | `204` |
 | GET | `/stats` | — | `200 JobStatsDto` |
+| GET | `/activity` | — | `200 [JobStatusHistoryDto]` — newest transitions across your jobs |
+| GET | `/{id}/history` | — | `200 [JobStatusHistoryDto]` — oldest first |
 
 `JobRequest`:
 
@@ -191,9 +193,20 @@ Both are permitted in `SecurityConfig` (documentation only, no data access).
   "outcomeReason": null,
   "feedback": null,
   "notes": "Referred by a friend",
+  "jobSource": "LinkedIn",
+  "workMode": "hybrid",
+  "deadline": "2026-10-01",
+  "salaryMin": 90000,
+  "salaryMax": 120000,
+  "salaryCurrency": "USD",
+  "tags": ["referral", "dream job"],
   "resumeId": 3
 }
 ```
+
+`workMode` accepts `remote`, `hybrid` or `onsite`. `salaryCurrency` is upper-cased on the way in, and
+`tags` are trimmed, de-duplicated, capped at 20 and returned sorted. Supplying a `salaryMin` greater
+than `salaryMax` returns `400`.
 
 Business rules applied by the service:
 
@@ -207,6 +220,8 @@ Business rules applied by the service:
   (the supplied date, the previously stored one, or today).
 - `outcome` is derived from `status` (`offer`/`rejected`/`withdrawn`/`ghosted`) so the two
   can never disagree.
+- Every creation and every status change is written to `job_status_history`. Setting a status to
+  the value it already has does **not** add a row, so the timeline stays meaningful.
 - `resumeId` must reference one of *your* resumes, otherwise the request returns `404`.
 
 ### Resumes — `/api/resumes`

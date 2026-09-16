@@ -24,6 +24,21 @@ export type JobOutcome = 'offer' | 'rejected' | 'withdrawn' | 'ghosted';
 
 export type ResumeFileType = 'pdf' | 'docx';
 
+/** Where the work happens. */
+export type WorkMode = 'remote' | 'hybrid' | 'onsite';
+
+/** One recorded pipeline transition for a job. */
+export interface JobStatusHistoryEntry {
+  id: number;
+  jobId: number;
+  jobCompanyName?: string;
+  jobTitle?: string;
+  fromStatus?: JobStatus;
+  toStatus: JobStatus;
+  changedAt: string;
+  note?: string;
+}
+
 /** Resume metadata. The document itself is fetched from /api/resumes/{id}/download. */
 export interface Resume {
   id: number;
@@ -60,6 +75,13 @@ export interface Job {
   outcomeReason?: OutcomeReason;
   feedback?: string;
   notes?: string;
+  jobSource?: string;
+  workMode?: WorkMode;
+  deadline?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryCurrency?: string;
+  tags?: string[];
   resumeId?: number;
   interviews?: Interview[];
   createdAt: string;
@@ -80,6 +102,13 @@ export interface JobPayload {
   outcomeReason?: OutcomeReason;
   feedback?: string;
   notes?: string;
+  jobSource?: string;
+  workMode?: WorkMode;
+  deadline?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryCurrency?: string;
+  tags?: string[];
   resumeId?: number | null;
 }
 

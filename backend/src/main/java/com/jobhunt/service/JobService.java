@@ -3,15 +3,18 @@ package com.jobhunt.service;
 import com.jobhunt.dto.JobDto;
 import com.jobhunt.dto.JobRequest;
 import com.jobhunt.dto.JobStatsDto;
+import com.jobhunt.dto.JobStatusHistoryDto;
 import com.jobhunt.dto.PageResponse;
 import com.jobhunt.entity.Job;
 import com.jobhunt.entity.JobOutcome;
 import com.jobhunt.entity.JobStatus;
+import com.jobhunt.entity.JobStatusHistory;
 import com.jobhunt.entity.Resume;
 import com.jobhunt.entity.User;
 import com.jobhunt.exception.ConflictException;
 import com.jobhunt.exception.ResourceNotFoundException;
 import com.jobhunt.repository.JobRepository;
+import com.jobhunt.repository.JobStatusHistoryRepository;
 import com.jobhunt.repository.ResumeRepository;
 import com.jobhunt.repository.UserRepository;
 import org.springframework.data.domain.PageRequest;
@@ -24,9 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -72,13 +77,16 @@ public class JobService {
     private final JobRepository jobRepository;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
+    private final JobStatusHistoryRepository historyRepository;
 
     public JobService(JobRepository jobRepository,
                       ResumeRepository resumeRepository,
-                      UserRepository userRepository) {
+                      UserRepository userRepository,
+                      JobStatusHistoryRepository historyRepository) {
         this.jobRepository = jobRepository;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
+        this.historyRepository = historyRepository;
     }
 
     @Transactional(readOnly = true)
@@ -119,24 +127,53 @@ public class JobService {
         job.setUser(user);
         applyRequest(job, request, userId);
 
-        return toDto(jobRepository.save(job));
+        Job saved = jobRepository.save(job);
+        recordHistory(saved, null, saved.getStatus());
+        return toDto(saved);
     }
 
     @Transactional
     public JobDto update(Long userId, Long jobId, JobRequest request) {
         Job job = findOwned(userId, jobId);
         rejectDuplicate(userId, request.companyName(), request.jobTitle(), jobId);
+
+        JobStatus previousStatus = job.getStatus();
         applyRequest(job, request, userId);
-        return toDto(jobRepository.save(job));
+
+        Job saved = jobRepository.save(job);
+        recordHistory(saved, previousStatus, saved.getStatus());
+        return toDto(saved);
     }
 
     @Transactional
     public JobDto updateStatus(Long userId, Long jobId, JobStatus status) {
         Job job = findOwned(userId, jobId);
+        JobStatus previousStatus = job.getStatus();
+
         job.setStatus(status);
         job.setAppliedDate(resolveAppliedDate(status, null, job.getAppliedDate()));
         job.setOutcome(outcomeFor(status));
-        return toDto(jobRepository.save(job));
+
+        Job saved = jobRepository.save(job);
+        recordHistory(saved, previousStatus, saved.getStatus());
+        return toDto(saved);
+    }
+
+    /** Pipeline transitions for one job, oldest first. Ownership is enforced. */
+    @Transactional(readOnly = true)
+    public List<JobStatusHistoryDto> history(Long userId, Long jobId) {
+        findOwned(userId, jobId);
+        return historyRepository.findByJobIdOrderByChangedAtAsc(jobId).stream()
+                .map(this::toHistoryDto)
+                .toList();
+    }
+
+    /** Most recent transitions across the user's jobs, newest first. */
+    @Transactional(readOnly = true)
+    public List<JobStatusHistoryDto> recentActivity(Long userId) {
+        return historyRepository.findTop20ByJob_UserIdOrderByChangedAtDesc(userId).stream()
+                .map(this::toHistoryDto)
+                .toList();
     }
 
     @Transactional
@@ -274,6 +311,18 @@ public class JobService {
         job.setAppliedDate(resolveAppliedDate(status, request.appliedDate(), job.getAppliedDate()));
         job.setOutcome(outcomeFor(status));
         job.setResume(resolveResume(userId, request.resumeId()));
+        job.setJobSource(trimToNull(request.jobSource()));
+        job.setWorkMode(request.workMode());
+        job.setDeadline(request.deadline());
+        job.setSalaryMin(request.salaryMin());
+        job.setSalaryMax(request.salaryMax());
+        job.setSalaryCurrency(normaliseCurrency(request.salaryCurrency()));
+        job.setTags(normaliseTags(request.tags()));
+
+        if (request.salaryMin() != null && request.salaryMax() != null
+                && request.salaryMin() > request.salaryMax()) {
+            throw new IllegalArgumentException("Minimum salary cannot be greater than maximum salary");
+        }
     }
 
     /**
@@ -328,6 +377,13 @@ public class JobService {
                 job.getOutcomeReason(),
                 job.getFeedback(),
                 job.getNotes(),
+                job.getJobSource(),
+                job.getWorkMode(),
+                job.getDeadline(),
+                job.getSalaryMin(),
+                job.getSalaryMax(),
+                job.getSalaryCurrency(),
+                job.getTags() == null ? List.of() : job.getTags().stream().sorted().toList(),
                 job.getResume() != null ? job.getResume().getId() : null,
                 job.getCreatedAt(),
                 job.getUpdatedAt());
@@ -362,6 +418,52 @@ public class JobService {
             return '"' + text.replace("\"", "\"\"") + '"';
         }
         return text;
+    }
+
+    private void recordHistory(Job job, JobStatus from, JobStatus to) {
+        if (to == null || Objects.equals(from, to)) {
+            return;
+        }
+        historyRepository.save(new JobStatusHistory(job, from, to, null));
+    }
+
+    private JobStatusHistoryDto toHistoryDto(JobStatusHistory entry) {
+        Job job = entry.getJob();
+        return new JobStatusHistoryDto(
+                entry.getId(),
+                job == null ? null : job.getId(),
+                job == null ? null : job.getCompanyName(),
+                job == null ? null : job.getJobTitle(),
+                entry.getFromStatus(),
+                entry.getToStatus(),
+                entry.getChangedAt(),
+                entry.getNote());
+    }
+
+    private String normaliseCurrency(String currency) {
+        String trimmed = trimToNull(currency);
+        return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    /** Trims, de-duplicates and caps the tag list so the collection table stays tidy. */
+    private Set<String> normaliseTags(Set<String> tags) {
+        Set<String> cleaned = new LinkedHashSet<>();
+        if (tags == null) {
+            return cleaned;
+        }
+        for (String tag : tags) {
+            if (tag == null) {
+                continue;
+            }
+            String trimmed = tag.trim();
+            if (!trimmed.isEmpty()) {
+                cleaned.add(trimmed);
+            }
+            if (cleaned.size() >= 20) {
+                break;
+            }
+        }
+        return cleaned;
     }
 
     private String trimToNull(String value) {

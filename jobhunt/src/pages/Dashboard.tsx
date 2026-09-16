@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useJobs } from '@/context/JobContext';
-import { JobStats } from '@/types';
+import { api } from '@/lib/api';
+import { JobStats, JobStatusHistoryEntry, STATUS_LABELS } from '@/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Briefcase, Send, Users, Trophy, XCircle, TrendingUp, Clock } from 'lucide-react';
 
@@ -19,9 +21,33 @@ export function Dashboard() {
   // Dashboard statistics are computed by the backend (GET /api/jobs/stats).
   const stats = state.stats ?? EMPTY_STATS;
 
-  const recentJobs = [...state.jobs]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 5);
+  // A real event log rather than "whatever changed most recently".
+  const [activity, setActivity] = useState<JobStatusHistoryEntry[]>([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActivity = async () => {
+      try {
+        const entries = await api.recentActivity();
+        if (!cancelled) {
+          setActivity(entries);
+        }
+      } catch {
+        // A failed feed must not break the rest of the dashboard.
+      } finally {
+        if (!cancelled) {
+          setIsLoadingActivity(false);
+        }
+      }
+    };
+
+    void loadActivity();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.jobs]);
 
   const statCards = [
     { label: 'Total Jobs', value: stats.total, icon: Briefcase, color: 'bg-slate-500' },
@@ -30,6 +56,11 @@ export function Dashboard() {
     { label: 'Offers', value: stats.offers, icon: Trophy, color: 'bg-green-500' },
     { label: 'Rejected', value: stats.rejected, icon: XCircle, color: 'bg-red-500' },
   ];
+
+  const describeChange = (entry: JobStatusHistoryEntry) =>
+    entry.fromStatus
+      ? `Moved from ${STATUS_LABELS[entry.fromStatus]} to ${STATUS_LABELS[entry.toStatus]}`
+      : `Added as ${STATUS_LABELS[entry.toStatus]}`;
 
   return (
     <div className="space-y-8">
@@ -111,37 +142,43 @@ export function Dashboard() {
             <h3 className="font-semibold text-gray-900">Recent Activity</h3>
           </div>
         </div>
-        <div className="divide-y divide-gray-100">
-          {recentJobs.length > 0 ? (
-            recentJobs.map((job) => (
-              <div key={job.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                      {job.companyName.charAt(0).toUpperCase()}
+
+        {isLoadingActivity ? (
+          <div className="px-6 py-12 text-center text-sm text-gray-400">Loading activity...</div>
+        ) : activity.length > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {activity.slice(0, 8).map((entry) => (
+              <div key={entry.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                      {(entry.jobCompanyName ?? '?').charAt(0).toUpperCase()}
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{job.companyName}</p>
-                      <p className="text-sm text-gray-500">{job.jobTitle}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {entry.jobCompanyName ?? 'Job'}
+                        {entry.jobTitle && <span className="text-gray-500 font-normal"> · {entry.jobTitle}</span>}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">{describeChange(entry)}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <StatusBadge status={job.status} />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(job.updatedAt).toLocaleDateString()}
-                    </p>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <StatusBadge status={entry.toStatus} />
+                    <span className="text-xs text-gray-400">
+                      {new Date(entry.changedAt).toLocaleDateString()}
+                    </span>
                   </div>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="px-6 py-12 text-center text-gray-500">
-              <Briefcase className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>No jobs tracked yet</p>
-              <p className="text-sm">Add your first job to get started!</p>
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-6 py-12 text-center text-gray-500">
+            <Briefcase className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>No activity yet</p>
+            <p className="text-sm">Add your first job to get started!</p>
+          </div>
+        )}
       </div>
     </div>
   );
