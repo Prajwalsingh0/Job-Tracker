@@ -2,14 +2,21 @@ import { useState } from 'react';
 import { useJobs } from '@/context/JobContext';
 import { fetchResumeFile } from '@/lib/api';
 import { CoverLetterLibrary } from '@/components/documents/CoverLetterLibrary';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SkeletonCards } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { Resume } from '@/types';
 import { FileText, Upload, Trash2, Download, Tag, Calendar, Eye } from 'lucide-react';
 
 export function ResumeLibrary() {
   const { state, addResume, deleteResume } = useJobs();
+  const { showToast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [busyResumeId, setBusyResumeId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Replaces the old window.prompt: the tag is typed up front and applied to the next upload.
+  const [versionTag, setVersionTag] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<Resume | null>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -29,26 +36,34 @@ export function ResumeLibrary() {
     }
 
     const defaultName = file.name.replace(/\.[^/.]+$/, '');
-    const versionTag = window.prompt('Enter a version tag (e.g., "Technical v2", "Marketing Focus"):', defaultName);
 
     setError(null);
     setIsUploading(true);
     try {
-      await addResume(file, { versionTag: versionTag || undefined });
+      await addResume(file, { versionTag: versionTag.trim() || defaultName });
+      setVersionTag('');
+      showToast(`Uploaded ${file.name}`, 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setIsUploading(false);
       e.target.value = '';
     }
   };
 
-  const handleDelete = async (resume: Resume) => {
-    if (!window.confirm(`Delete "${resume.name}"? This cannot be undone.`)) return;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const resume = pendingDelete;
+    setPendingDelete(null);
     try {
       await deleteResume(resume.id);
+      showToast(`Deleted ${resume.name}`, 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete the resume');
+      const message = err instanceof Error ? err.message : 'Failed to delete the resume';
+      setError(message);
+      showToast(message, 'error');
     }
   };
 
@@ -99,17 +114,28 @@ export function ResumeLibrary() {
           <h1 className="text-3xl font-bold text-gray-900">Resume Library</h1>
           <p className="text-gray-500 mt-1">Manage your resume versions</p>
         </div>
-        <label className={`flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-          <Upload className="w-5 h-5" />
-          {isUploading ? 'Uploading...' : 'Upload Resume'}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <input
-            type="file"
-            accept=".pdf,.docx"
-            onChange={handleUpload}
-            className="hidden"
-            disabled={isUploading}
+            id="resume-version"
+            type="text"
+            value={versionTag}
+            onChange={(e) => setVersionTag(e.target.value)}
+            aria-label="Version tag for the next upload"
+            placeholder="Version tag (optional)"
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-56"
           />
-        </label>
+          <label className={`flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Upload className="w-5 h-5" />
+            {isUploading ? 'Uploading...' : 'Upload Resume'}
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              onChange={handleUpload}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -117,7 +143,9 @@ export function ResumeLibrary() {
       )}
 
       {/* Resumes Grid */}
-      {state.resumes.length > 0 ? (
+      {state.isLoading ? (
+        <SkeletonCards count={3} />
+      ) : state.resumes.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {state.resumes.map((resume) => (
             <div
@@ -175,7 +203,8 @@ export function ResumeLibrary() {
                   Download
                 </button>
                 <button
-                  onClick={() => handleDelete(resume)}
+                  onClick={() => setPendingDelete(resume)}
+                  aria-label={`Delete ${resume.name}`}
                   className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -197,6 +226,20 @@ export function ResumeLibrary() {
       <div className="border-t border-gray-200 pt-8">
         <CoverLetterLibrary />
       </div>
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Delete this resume?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.name}" and its stored document will be removed. Jobs that used it are kept. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

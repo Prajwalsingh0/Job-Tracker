@@ -1,5 +1,5 @@
 import { Job } from '@/types';
-import { MapPin, Calendar, ExternalLink, FileText } from 'lucide-react';
+import { MapPin, Calendar, ExternalLink, FileText, Pencil } from 'lucide-react';
 import { useJobs } from '@/context/JobContext';
 
 interface JobCardProps {
@@ -43,17 +43,33 @@ export function JobCard({ job, onClick, isDragging = false }: JobCardProps) {
               <p className="text-gray-600 text-xs">{job.jobTitle}</p>
             </div>
           </div>
-          {job.jobUrl && (
-            <a
-              href={job.jobUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
-          )}
+          <div className="flex items-center gap-1">
+            {onClick && !isDragging && (
+              <button
+                type="button"
+                aria-label={`Edit ${job.companyName}, ${job.jobTitle}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            )}
+            {job.jobUrl && (
+              <a
+                href={job.jobUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open the job listing for ${job.companyName}`}
+                onClick={e => e.stopPropagation()}
+                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+          </div>
         </div>
       </div>
 

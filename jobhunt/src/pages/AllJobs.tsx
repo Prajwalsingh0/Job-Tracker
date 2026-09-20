@@ -3,7 +3,10 @@ import { useJobs } from '@/context/JobContext';
 import { api, exportJobsCsv } from '@/lib/api';
 import { Job, JobSortField, JobStatus, PageResponse, STATUS_LABELS } from '@/types';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { JobForm } from '@/components/jobs/JobForm';
 import {
   Search, Plus, ExternalLink, MapPin, Calendar, FileText, Filter,
@@ -40,7 +43,9 @@ function SortableHeader({ label, field, activeField, direction, onSort, classNam
 
 export function AllJobs() {
   const { deleteJob, getResumeById } = useJobs();
+  const { showToast } = useToast();
 
+  const [pendingDelete, setPendingDelete] = useState<Job | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -142,19 +147,27 @@ export function AllJobs() {
 
   const handleJobSaved = () => {
     handleCloseModal();
+    showToast('Job saved', 'success');
     void loadJobs();
   };
 
-  const handleDeleteJob = async () => {
-    if (!selectedJob || !window.confirm('Are you sure you want to delete this job?')) {
-      return;
+  const requestDelete = () => {
+    if (selectedJob) {
+      setPendingDelete(selectedJob);
     }
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const job = pendingDelete;
+    setPendingDelete(null);
     try {
-      await deleteJob(selectedJob.id);
+      await deleteJob(job.id);
       handleCloseModal();
+      showToast(`Deleted ${job.companyName}`, 'success');
       await loadJobs();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete the job');
+      showToast(err instanceof Error ? err.message : 'Failed to delete the job', 'error');
     }
   };
 
@@ -252,7 +265,7 @@ export function AllJobs() {
       {/* Jobs List */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="px-6 py-16 text-center text-gray-400 text-sm">Loading jobs...</div>
+          <SkeletonList rows={5} />
         ) : jobs.length > 0 ? (
           <div className="divide-y divide-gray-100">
             {jobs.map((job) => {
@@ -262,7 +275,16 @@ export function AllJobs() {
               return (
                 <div
                   key={job.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Edit ${job.companyName}, ${job.jobTitle}`}
                   onClick={() => handleJobClick(job)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleJobClick(job);
+                    }
+                  }}
                   className="px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -372,10 +394,24 @@ export function AllJobs() {
           <JobForm
             job={selectedJob}
             onSave={handleJobSaved}
-            onDelete={handleDeleteJob}
+            onDelete={requestDelete}
           />
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Delete this job?"
+        message={
+          pendingDelete
+            ? `${pendingDelete.companyName} · ${pendingDelete.jobTitle} will be removed, along with its status history. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       {/* Add Job Modal */}
       <Modal

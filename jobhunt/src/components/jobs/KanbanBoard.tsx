@@ -15,13 +15,19 @@ import { Job, JobStatus, KANBAN_COLUMNS } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { JobCard } from './JobCard';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { JobForm } from './JobForm';
 
 export function KanbanBoard() {
   const { state, moveJob, deleteJob, getJobsByStatus } = useJobs();
+  const { showToast } = useToast();
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Job | null>(null);
+  // On phones eight columns side by side are unusable, so one stage is shown at a time.
+  const [mobileColumn, setMobileColumn] = useState<JobStatus>('wishlist');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -62,7 +68,9 @@ export function KanbanBoard() {
     const draggedJob = state.jobs.find((job) => job.id === jobId);
     if (draggedJob && draggedJob.status === targetColumn.id) return;
 
-    void moveJob(jobId, targetColumn.id);
+    void moveJob(jobId, targetColumn.id).catch((error: unknown) => {
+      showToast(error instanceof Error ? error.message : 'Could not move the job', 'error');
+    });
   };
 
   const handleJobClick = (job: Job) => {
@@ -76,14 +84,15 @@ export function KanbanBoard() {
   };
 
   const handleDeleteJob = async () => {
-    if (!selectedJob || !window.confirm('Are you sure you want to delete this job?')) {
-      return;
-    }
+    if (!pendingDelete) return;
+    const job = pendingDelete;
+    setPendingDelete(null);
     try {
-      await deleteJob(selectedJob.id);
+      await deleteJob(job.id);
       handleCloseModal();
+      showToast(`Deleted ${job.companyName}`, 'success');
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to delete the job');
+      showToast(err instanceof Error ? err.message : 'Failed to delete the job', 'error');
     }
   };
 
@@ -95,6 +104,24 @@ export function KanbanBoard() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
+        <div className="lg:hidden mb-4">
+          <label htmlFor="kanban-stage" className="sr-only">
+            Pipeline stage
+          </label>
+          <select
+            id="kanban-stage"
+            value={mobileColumn}
+            onChange={(event) => setMobileColumn(event.target.value as JobStatus)}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {KANBAN_COLUMNS.map((column) => (
+              <option key={column.id} value={column.id}>
+                {column.title} ({getJobsByStatus(column.id).length})
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
           {KANBAN_COLUMNS.map(column => {
             const jobs = getJobsByStatus(column.id);
@@ -104,6 +131,7 @@ export function KanbanBoard() {
                 column={column}
                 jobs={jobs}
                 onJobClick={handleJobClick}
+                className={column.id === mobileColumn ? '' : 'hidden lg:flex'}
               />
             );
           })}
@@ -124,10 +152,24 @@ export function KanbanBoard() {
           <JobForm
             job={selectedJob}
             onSave={handleCloseModal}
-            onDelete={handleDeleteJob}
+            onDelete={() => setPendingDelete(selectedJob)}
           />
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Delete this job?"
+        message={
+          pendingDelete
+            ? `${pendingDelete.companyName} · ${pendingDelete.jobTitle} will be removed, along with its status history. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void handleDeleteJob()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </>
   );
 }

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useJobs } from '@/context/JobContext';
 import { api, fetchCoverLetterFile } from '@/lib/api';
 import { CoverLetter } from '@/types';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SkeletonCards } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import {
   Mail, Plus, Trash2, Download, FileText, Calendar, Link2, X, Loader2, Save,
 } from 'lucide-react';
@@ -18,11 +21,13 @@ const ALLOWED_TYPES = [
  */
 export function CoverLetterLibrary() {
   const { state } = useJobs();
+  const { showToast } = useToast();
 
   const [letters, setLetters] = useState<CoverLetter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CoverLetter | null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [mode, setMode] = useState<'text' | 'file'>('text');
@@ -103,6 +108,7 @@ export function CoverLetterLibrary() {
       });
       resetForm();
       setIsFormOpen(false);
+      showToast('Cover letter saved', 'success');
       await loadLetters();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Could not save the cover letter');
@@ -130,13 +136,18 @@ export function CoverLetterLibrary() {
     }
   };
 
-  const handleDelete = async (letter: CoverLetter) => {
-    if (!window.confirm(`Delete "${letter.name}"? This cannot be undone.`)) return;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const letter = pendingDelete;
+    setPendingDelete(null);
     try {
       await api.deleteCoverLetter(letter.id);
+      showToast(`Deleted ${letter.name}`, 'success');
       await loadLetters();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete the cover letter');
+      const message = err instanceof Error ? err.message : 'Failed to delete the cover letter';
+      setError(message);
+      showToast(message, 'error');
     }
   };
 
@@ -290,9 +301,7 @@ export function CoverLetterLibrary() {
       )}
 
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-6 py-12 text-center text-sm text-gray-400">
-          Loading cover letters...
-        </div>
+        <SkeletonCards count={3} />
       ) : letters.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {letters.map((letter) => (
@@ -350,7 +359,7 @@ export function CoverLetterLibrary() {
                   </button>
                 )}
                 <button
-                  onClick={() => handleDelete(letter)}
+                  onClick={() => setPendingDelete(letter)}
                   aria-label={`Delete ${letter.name}`}
                   className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-auto"
                 >
@@ -371,6 +380,20 @@ export function CoverLetterLibrary() {
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Delete this cover letter?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.name}"${pendingDelete.fileName ? ' and its stored document' : ''} will be removed. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </section>
   );
 }

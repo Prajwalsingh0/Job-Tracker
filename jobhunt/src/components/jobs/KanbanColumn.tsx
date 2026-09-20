@@ -7,9 +7,11 @@ interface KanbanColumnProps {
   column: KanbanColumnType;
   jobs: Job[];
   onJobClick: (job: Job) => void;
+  /** Lets the board hide columns on small screens when a single stage is selected. */
+  className?: string;
 }
 
-export function KanbanColumn({ column, jobs, onJobClick }: KanbanColumnProps) {
+export function KanbanColumn({ column, jobs, onJobClick, className = '' }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
   });
@@ -17,8 +19,8 @@ export function KanbanColumn({ column, jobs, onJobClick }: KanbanColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className={`flex-shrink-0 w-72 bg-gray-50 rounded-xl p-3 flex flex-col transition-colors
-        ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-300' : ''}`}
+      className={`flex-shrink-0 w-full lg:w-72 bg-gray-50 rounded-xl p-3 flex flex-col transition-colors
+        ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-300' : ''} ${className}`}
     >
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
