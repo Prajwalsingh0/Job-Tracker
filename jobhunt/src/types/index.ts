@@ -60,6 +60,19 @@ export interface Interview {
   createdAt: string;
 }
 
+/** A cover letter is an uploaded document, pasted text, or both. */
+export interface CoverLetter {
+  id: number;
+  name: string;
+  jobId?: number;
+  body?: string;
+  fileName?: string;
+  fileType?: ResumeFileType;
+  fileSize?: number;
+  versionTag?: string;
+  createdAt: string;
+}
+
 export interface Job {
   id: number;
   companyName: string;

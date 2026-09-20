@@ -1,4 +1,4 @@
-import type { Job, JobPayload, JobSortField, JobStats, JobStatus, JobStatusHistoryEntry, PageResponse, Resume } from '@/types';
+import type { CoverLetter, Job, JobPayload, JobSortField, JobStats, JobStatus, JobStatusHistoryEntry, PageResponse, Resume } from '@/types';
 import type { AuthResponse, LoginCredentials, RegisterCredentials, User } from '@/types/auth';
 
 /**
@@ -229,6 +229,13 @@ export function exportJobsCsv(
     return downloadFile(`/api/jobs/export${query}`, 'job-applications.csv');
 }
 
+/** Downloads an uploaded cover letter document. */
+export function fetchCoverLetterFile(
+    letter: CoverLetter,
+): Promise<{ blob: Blob; fileName: string }> {
+    return downloadFile(`/api/cover-letters/${letter.id}/download`, letter.fileName ?? 'cover-letter');
+}
+
 export const api = {
     register: async (credentials: RegisterCredentials) => {
         const response = await request<AuthResponse>('/api/auth/register', { method: 'POST', body: credentials });
@@ -301,4 +308,34 @@ export const api = {
     },
 
     deleteResume: (id: number) => request<void>(`/api/resumes/${id}`, { method: 'DELETE' }),
+
+    listCoverLetters: () => request<CoverLetter[]>('/api/cover-letters'),
+
+    createCoverLetter: (input: {
+        file?: File;
+        body?: string;
+        name?: string;
+        versionTag?: string;
+        jobId?: number;
+    }) => {
+        const formData = new FormData();
+        if (input.file) {
+            formData.append('file', input.file);
+        }
+        if (input.body) {
+            formData.append('body', input.body);
+        }
+        if (input.name) {
+            formData.append('name', input.name);
+        }
+        if (input.versionTag) {
+            formData.append('versionTag', input.versionTag);
+        }
+        if (input.jobId !== undefined) {
+            formData.append('jobId', String(input.jobId));
+        }
+        return request<CoverLetter>('/api/cover-letters', { method: 'POST', formData });
+    },
+
+    deleteCoverLetter: (id: number) => request<void>(`/api/cover-letters/${id}`, { method: 'DELETE' }),
 };

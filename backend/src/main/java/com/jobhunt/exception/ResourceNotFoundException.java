@@ -14,4 +14,8 @@ public class ResourceNotFoundException extends RuntimeException {
     public static ResourceNotFoundException resume(Long id) {
         return new ResourceNotFoundException("Resume not found with id: " + id);
     }
+
+    public static ResourceNotFoundException coverLetter(Long id) {
+        return new ResourceNotFoundException("Cover letter not found with id: " + id);
+    }
 }

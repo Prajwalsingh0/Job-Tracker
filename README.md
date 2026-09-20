@@ -275,6 +275,18 @@ Recent Activity panel is built from the latter.
 | `GET` | `/api/resumes/{id}/download` | Download the document |
 | `DELETE` | `/api/resumes/{id}` | Delete a resume (jobs keep existing, detached) |
 
+### Cover letters
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/cover-letters` | List your cover letters |
+| `POST` | `/api/cover-letters` | Create one from pasted text, an uploaded PDF/DOCX, or both |
+| `GET` | `/api/cover-letters/{id}/download` | Download the attached document |
+| `DELETE` | `/api/cover-letters/{id}` | Delete a cover letter and its stored document |
+
+A cover letter may be linked to one of your jobs via `jobId`, which must belong to you.
+Deleting a job clears the link rather than deleting the letter.
+
 Errors always use the same JSON shape:
 
 ```json

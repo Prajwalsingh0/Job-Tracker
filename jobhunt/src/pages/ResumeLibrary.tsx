@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useJobs } from '@/context/JobContext';
 import { fetchResumeFile } from '@/lib/api';
+import { CoverLetterLibrary } from '@/components/documents/CoverLetterLibrary';
 import { Resume } from '@/types';
 import { FileText, Upload, Trash2, Download, Tag, Calendar, Eye } from 'lucide-react';
 
@@ -192,6 +193,10 @@ export function ResumeLibrary() {
           <p className="text-gray-400 text-sm mt-1">Upload your first resume to get started!</p>
         </div>
       )}
+
+      <div className="border-t border-gray-200 pt-8">
+        <CoverLetterLibrary />
+      </div>
     </div>
   );
 }

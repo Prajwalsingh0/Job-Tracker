@@ -248,6 +248,20 @@ signature (`%PDF-` or `PK\x03\x04`) rather than trusting the browser content typ
 written to file storage (see below) and downloads are streamed. Deleting a resume removes the
 stored file and detaches it from any job that referenced it; the jobs themselves are kept.
 
+### Cover letters — `/api/cover-letters`
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| GET | `/` | — | `200 [CoverLetterDto]` |
+| POST | `/` | `multipart/form-data`: optional `file`, `body`, `name`, `versionTag`, `jobId` | `201 CoverLetterDto` |
+| GET | `/{id}/download` | — | `200` document bytes (only when a file was uploaded) |
+| DELETE | `/{id}` | — | `204` |
+
+A letter is an uploaded PDF/DOCX, pasted text, or both — at least one is required, otherwise the
+request returns `400`. Documents use the same storage, size limit and signature validation as
+resumes. `jobId` must reference one of *your* jobs, and deleting that job clears the link rather
+than removing the letter. Text is capped at 20,000 characters.
+
 ## File storage
 
 Document bytes are **not** stored in the database. `FileStorageService` is the seam:
@@ -272,6 +286,7 @@ Older rows may still hold their document in the `file_data` column. A startup ru
 file storage and clears the column. It is idempotent, only selects rows with bytes and no storage
 key, and a failure is logged as a warning rather than blocking startup so the next run can retry.
 
+## Error format
 
 ```json
 {
