@@ -286,6 +286,27 @@ Older rows may still hold their document in the `file_data` column. A startup ru
 file storage and clears the column. It is idempotent, only selects rows with bytes and no storage
 key, and a failure is logged as a warning rather than blocking startup so the next run can retry.
 
+## Analytics — `/api/analytics`
+
+| Method | Path | Query | Response |
+| --- | --- | --- | --- |
+| GET | `/` | `from`, `to` (optional ISO dates) | `200 AnalyticsDto` |
+
+Returns, for the caller only:
+
+- `metrics` — total, applied, interviewing, offers, rejected and the response/interview/offer rates.
+- `funnel` — current counts per pipeline stage, in pipeline order.
+- `timeline` — counts of *entries* into the applied, interviewing and offer stages per calendar
+  month, taken from `job_status_history` rather than inferred from current state. Every month in
+  the range is present, even when zero, so the axis stays continuous.
+- `companies` / `roles` — top ten by volume, each with interview and offer counts.
+- `upcomingDeadlines` — jobs with a deadline in the next 60 days, earliest first.
+- `activeInterviews` — jobs currently in `phone_screen` or `interview`.
+
+A job falls inside the range by its `appliedDate`, or by when it was added if it has none. The
+aggregation loads the user's jobs and reduces them in memory — appropriate for a personal tracker,
+and the natural place to move to SQL aggregates if volume grows.
+
 ## Error format
 
 ```json

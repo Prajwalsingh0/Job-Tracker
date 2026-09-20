@@ -157,6 +157,64 @@ export type JobSortField =
   | 'appliedDate'
   | 'targetApplyDate';
 
+/** Analytics payload for a date range (GET /api/analytics). */
+export interface AnalyticsMetrics {
+  total: number;
+  applied: number;
+  interviewing: number;
+  offers: number;
+  rejected: number;
+  responseRate: number;
+  interviewRate: number;
+  offerRate: number;
+}
+
+export interface FunnelStage {
+  status: JobStatus;
+  count: number;
+}
+
+export interface TimelinePoint {
+  /** YYYY-MM */
+  period: string;
+  applied: number;
+  interviews: number;
+  offers: number;
+}
+
+export interface AnalyticsBreakdown {
+  label: string;
+  total: number;
+  interviewing: number;
+  offers: number;
+}
+
+export interface UpcomingDeadline {
+  jobId: number;
+  companyName: string;
+  jobTitle: string;
+  deadline: string;
+}
+
+export interface ActiveInterview {
+  jobId: number;
+  companyName: string;
+  jobTitle: string;
+  status: JobStatus;
+}
+
+export interface Analytics {
+  from: string;
+  to: string;
+  metrics: AnalyticsMetrics;
+  funnel: FunnelStage[];
+  timeline: TimelinePoint[];
+  companies: AnalyticsBreakdown[];
+  roles: AnalyticsBreakdown[];
+  upcomingDeadlines: UpcomingDeadline[];
+  activeInterviews: ActiveInterview[];
+}
+
 // Column configuration for Kanban board
 export interface KanbanColumn {
   id: JobStatus;

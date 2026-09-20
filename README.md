@@ -287,6 +287,15 @@ Recent Activity panel is built from the latter.
 A cover letter may be linked to one of your jobs via `jobId`, which must belong to you.
 Deleting a job clears the link rather than deleting the letter.
 
+### Analytics
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/analytics?from=&to=` | Funnel, monthly trend, rates, company/role breakdowns, upcoming deadlines and active interviews |
+
+Both date bounds are optional ISO dates (`YYYY-MM-DD`); the default window is the last six
+months up to today. Inclusive range, and `from` after `to` returns `400`.
+
 Errors always use the same JSON shape:
 
 ```json

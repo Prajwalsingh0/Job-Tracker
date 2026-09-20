@@ -11,4 +11,7 @@ public interface JobStatusHistoryRepository extends JpaRepository<JobStatusHisto
 
     /** Most recent transitions across all of a user's jobs, for the dashboard activity feed. */
     List<JobStatusHistory> findTop20ByJob_UserIdOrderByChangedAtDesc(Long userId);
+
+    /** Full transition log for a user, oldest first. Used to build the monthly timeline. */
+    List<JobStatusHistory> findByJob_UserIdOrderByChangedAtAsc(Long userId);
 }

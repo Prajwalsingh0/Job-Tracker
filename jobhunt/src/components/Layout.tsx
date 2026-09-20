@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Kanban, List, FileText, Menu, X, Briefcase, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Kanban, List, FileText, Menu, X, Briefcase, LogOut, User, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/jobs', icon: List, label: 'All Jobs' },
   { to: '/resumes', icon: FileText, label: 'Resumes' },
