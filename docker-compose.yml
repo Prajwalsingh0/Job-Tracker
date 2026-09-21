@@ -1,12 +1,18 @@
-# Local PostgreSQL for development.
+# Local development and self-hosted deployment.
 #
-# The password is intentionally NOT hardcoded - Docker Compose refuses to start unless
-# POSTGRES_PASSWORD is set in your environment (or a local .env file, which is git-ignored).
+# Development (just the database):
+#   POSTGRES_PASSWORD='choose-something' docker compose up -d postgres
+#   cd backend && mvn spring-boot:run
+#   cd jobhunt && npm run dev
 #
-#   POSTGRES_PASSWORD='choose-a-password' docker compose up -d
-#   cd backend
-#   export DB_USERNAME=jobhunt DB_PASSWORD='choose-a-password' JWT_SECRET="$(openssl rand -base64 48)"
-#   mvn spring-boot:run
+# Full stack in containers:
+#   export POSTGRES_PASSWORD='...'
+#   export JWT_SECRET="$(openssl rand -base64 48)"
+#   docker compose up -d --build
+#   open http://localhost:5173
+#
+# Nothing here ships a default credential: Compose refuses to start unless
+# POSTGRES_PASSWORD and JWT_SECRET are provided.
 
 services:
   postgres:
@@ -16,7 +22,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-jobhunt}
       POSTGRES_USER: ${POSTGRES_USER:-jobhunt}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - see docker-compose.yml}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -27,5 +33,40 @@ services:
       timeout: 5s
       retries: 12
 
+  backend:
+    build: ./backend
+    container_name: jobhunt-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-jobhunt}
+      DB_USERNAME: ${POSTGRES_USER:-jobhunt}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set - try openssl rand -base64 48}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      STORAGE_ROOT: /app/data/uploads
+      # Optional. Without it the assistant reports itself as unavailable.
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+    volumes:
+      # Uploaded documents must outlive the container.
+      - jobhunt-uploads:/app/data/uploads
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    build: ./jobhunt
+    container_name: jobhunt-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+
 volumes:
   jobhunt-pgdata:
+  jobhunt-uploads:

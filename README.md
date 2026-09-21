@@ -177,7 +177,7 @@ so you can point it at a different backend without touching the code.
 ## 5. Tests and builds
 
 ```bash
-# Backend: 14 integration tests (auth + job CRUD + isolation + resumes)
+# Backend: 79 tests (auth, security, jobs, paging, CSV, storage, analytics, assistant)
 cd backend && mvn test
 
 # Backend: run tests and build the jar
@@ -372,16 +372,63 @@ curl http://localhost:8080/api/jobs/stats -H "Authorization: Bearer <TOKEN>"
   (a template with no values) is tracked.
 - Passwords are stored only as BCrypt hashes, and the hash is never returned by the API.
 
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | Component diagram, data model, request flow, and the reasoning behind each significant decision |
+| [Deployment](docs/DEPLOYMENT.md) | Required configuration, Docker and managed-platform steps, migrations, backups, post-deploy checklist |
+| [Security](docs/SECURITY.md) | Session model, authorization, upload handling, response hardening, and the honest list of gaps |
+| [Testing](docs/TESTING.md) | How to run everything, what each suite covers, and what is **not** verified |
+| [Demo](docs/DEMO.md) | Local run steps and a feature-by-feature walkthrough |
+
+## Docker
+
+```bash
+# Just the database, for local development
+docker compose up -d postgres
+
+# The whole stack
+export POSTGRES_PASSWORD='...'
+export JWT_SECRET="$(openssl rand -base64 48)"
+docker compose up -d --build
+```
+
+Compose refuses to start without `POSTGRES_PASSWORD` and `JWT_SECRET` — no default credentials are
+shipped. See [Deployment](docs/DEPLOYMENT.md).
+
+## Project status
+
+| Milestone | State |
+| --- | --- |
+| M0 Foundation — Flyway, CI, Swagger, Docker, test harness | done |
+| M1 Job tracker core — fields, tags, paging, sorting, CSV, status history | done |
+| M2 Security — refresh tokens, rate limiting, prod profile, upload validation | done |
+| M3 Documents — file storage abstraction, streaming, cover letters | done |
+| M4 Analytics & UX — funnel, charts, reminders, dialogs, toasts, accessibility | done, except dark mode |
+| M5 Assistant — deterministic matching, provider abstraction | done |
+| M6 Documentation & deployment | done |
+
 ## Known limitations
 
-- **PostgreSQL was not executed in this environment.** No PostgreSQL server or Docker was
-  available, so the schema and queries were verified against H2 in PostgreSQL-compatibility
-  mode. Please run the backend once against a real PostgreSQL instance before relying on it.
-- Interview tracking exists in the frontend types but has no backend table or endpoint yet.
-- Access tokens are stored in `localStorage`; there is no refresh-token flow or logout
-  revocation (the token simply expires).
-- The `h2/` migration is a hand-maintained twin of the `postgresql/` one, so every future schema
-  change has to be written twice.
-- Resume list endpoints load the document bytes with the entity; for large libraries move
-  the files to object storage and keep only references in the database.
-- The `uuid` npm packages are no longer used by the frontend (ids come from the database).
+- **PostgreSQL has not been run against a real server.** No PostgreSQL instance or Docker daemon was
+  available while building, so the schema, queries and migrations are proven against H2 in
+  PostgreSQL-compatibility mode. `docker compose up -d postgres` makes validating this a two-command
+  check, and it should be done before relying on the app.
+- **Dark mode is not implemented.** The UI hardcodes its palette with no design tokens, so a real
+  theme means introducing CSS variables and migrating components first. A half-finished toggle would
+  be worse than none.
+- **The live AI provider path is untested** — no API key was available. Prompt building, task routing
+  and error handling are covered with a stubbed provider; the outbound HTTP call is not.
+- **No browser or end-to-end tests.** Rendering, drag-and-drop and responsive layouts are verified by
+  build and inspection, not automated.
+- **Interview tracking is not implemented** (the frontend types exist as a placeholder with no
+  backend table or endpoint).
+- **Matching compares text you paste**, not your stored PDF/DOCX; text extraction would need a
+  parsing dependency.
+- **Auth rate limiting is in-process**, so each instance enforces its own budget. Move it to Redis or
+  a gateway when running more than one instance.
+- **Refresh tokens are not bound to a device or IP.** A stolen token works until it is rotated or the
+  user logs out.
+- The `h2/` migration is a hand-maintained twin of the `postgresql/` one, so every schema change must
+  be written twice.

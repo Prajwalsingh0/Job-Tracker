@@ -65,6 +65,12 @@
             <version>${springdoc.version}</version>
         </dependency>
 
+        <!-- Health endpoint used by container orchestrators -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

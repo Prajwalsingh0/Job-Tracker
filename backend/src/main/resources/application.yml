@@ -72,6 +72,16 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+management:
+  endpoints:
+    web:
+      # Only the liveness probe is exposed, for container platforms.
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 logging:
   level:
     com.jobhunt: INFO
