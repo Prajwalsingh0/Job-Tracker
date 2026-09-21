@@ -7,7 +7,8 @@ Keeping them on one origin means no CORS in production and the refresh cookie st
 
 The `prod` profile deliberately has **no defaults** for these. The application refuses to start
 without them, which is what you want: a missing credential should be a failed deploy, not a silent
-fallback to a development value.
+fallback to a development value. That fail-closed behaviour is asserted by `ProdProfileTest`, which
+also verifies the profile starts correctly once the credentials are supplied.
 
 | Variable | Required | Notes |
 | --- | --- | --- |

@@ -3,7 +3,7 @@
 ## Running the suites
 
 ```bash
-# Backend - 83 tests; no database server needed (a real PostgreSQL is started in-process)
+# Backend - 85 tests; no database server needed (a real PostgreSQL is started in-process)
 cd backend && mvn test
 
 # Backend - tests plus the packaged jar
@@ -22,11 +22,12 @@ cd jobhunt && npm run lint && npm run build
 CI (`.github/workflows/ci.yml`) runs `mvn verify`, the frontend lint + tests + build, and a scan that
 fails the build if an obvious credential is committed.
 
-## Backend coverage — 83 tests
+## Backend coverage — 85 tests
 
 | Class | Tests | What it covers |
 | --- | --- | --- |
 | `PostgresIntegrationTest` | 4 | **Runs against a real PostgreSQL 14.22 server started inside the test JVM.** Flyway applies the actual `db/migration/postgresql` scripts and Hibernate validates the entities against what was created; then a full job lifecycle (tags, enums, dates, numeric columns), status history with timestamps, paging, analytics, `BYTEA` document round-trip and cover letters are exercised on the real engine |
+| `ProdProfileTest` | 2 | The prod profile **refuses to start without credentials** (fail-closed, as documented) and **does start** with them against a real PostgreSQL, with Flyway and JPA present |
 | `AuthApiTest` | 6 | Registration, login, profile, duplicate email, wrong password, unknown email, validation errors, protected endpoints |
 | `AuthSecurityTest` | 7 | httpOnly refresh cookie, no token leakage in the body, rotation, replay rejection, missing cookie, logout revocation, security headers, upload signature checks |
 | `AuthRateLimitTest` | 2 | Failed logins are limited after the threshold, correct password is refused while the window is open, and normal authenticated traffic is unaffected |

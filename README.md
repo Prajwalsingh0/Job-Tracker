@@ -177,7 +177,7 @@ so you can point it at a different backend without touching the code.
 ## 5. Tests and builds
 
 ```bash
-# Backend: 83 tests, including one class that runs against a real PostgreSQL server
+# Backend: 85 tests, including two classes that run against a real PostgreSQL server
 cd backend && mvn test
 
 # Backend: run tests and build the jar
@@ -408,7 +408,7 @@ shipped. See [Deployment](docs/DEPLOYMENT.md).
 | M4 Analytics & UX — funnel, charts, reminders, dialogs, toasts, accessibility | done, except dark mode |
 | M5 Assistant — deterministic matching, provider abstraction | done |
 | M6 Documentation & deployment | done |
-| Verification | 83 backend tests (4 of them against a real PostgreSQL 14.22), 25 frontend tests, production build and lint clean |
+| Verification | 85 backend tests (6 of them against a real PostgreSQL 14.22), 25 frontend tests, production build and lint clean |
 
 ## Known limitations
 
