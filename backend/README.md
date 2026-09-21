@@ -307,6 +307,46 @@ A job falls inside the range by its `appliedDate`, or by when it was added if it
 aggregation loads the user's jobs and reduces them in memory — appropriate for a personal tracker,
 and the natural place to move to SQL aggregates if volume grows.
 
+## Assistant — `/api/ai`
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| GET | `/status` | — | `200 {provider, available, hint}` |
+| POST | `/match` | `{jobId, resumeText}` | `200 MatchResponse` |
+| POST | `/generate` | `{jobId, task, resumeText?}` | `200 {task, provider, content}` or `503` |
+
+`task` is one of `JOB_SUMMARY`, `INTERVIEW_QUESTIONS`, `COVER_LETTER`, `STAR_PRACTICE`,
+`LEARNING_PLAN`.
+
+### Why matching is deterministic
+
+`SkillMatcher` looks for known skill terms (curated advert vocabulary, matched on word boundaries so
+"Java" never matches inside "JavaScript") in both texts and reports the overlap. Overlapping terms
+are de-duplicated — if a posting says "Spring Boot", the shorter "Spring" is not counted separately,
+otherwise one mention would be scored twice. The result is returned as keyword overlap with a written
+disclaimer, never as an ATS score.
+
+Matching runs from text the caller supplies rather than parsing uploaded PDFs, because text
+extraction would need a PDF/DOCX parsing dependency. Extracting from stored documents is a natural
+follow-up.
+
+### Provider abstraction
+
+`AiProvider` is the seam; `AiConfiguration` picks an implementation at startup:
+
+| Provider | When |
+| --- | --- |
+| `OpenAiCompatibleAiProvider` | `AI_API_KEY` is set; works with OpenAI, Azure OpenAI, OpenRouter or a local server via `AI_BASE_URL` |
+| `NoopAiProvider` | the default. Reports itself unavailable and refuses to generate |
+
+The default exists so the application starts and the deterministic features work with no key, and so
+anything needing generation can say "not configured" honestly. The key is never logged, never
+returned in a response, and never reaches the browser.
+
+Prompts are assembled only from the saved job and the caller's own text, wrapped in a system prompt
+that forbids inventing skills, employers, dates, metrics or qualifications, forbids claiming a
+guaranteed ATS score or interview, and requires gaps to be named rather than filled.
+
 ## Error format
 
 ```json

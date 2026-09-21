@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { AnalyticsPage } from './pages/Analytics';
+import { AssistantPage } from './pages/Assistant';
 import { Pipeline } from './pages/Pipeline';
 import { AllJobs } from './pages/AllJobs';
 import { ResumeLibrary } from './pages/ResumeLibrary';
@@ -27,6 +28,7 @@ function App() {
             }>
               <Route index element={<Dashboard />} />
               <Route path="analytics" element={<AnalyticsPage />} />
+              <Route path="assistant" element={<AssistantPage />} />
               <Route path="pipeline" element={<Pipeline />} />
               <Route path="jobs" element={<AllJobs />} />
               <Route path="resumes" element={<ResumeLibrary />} />

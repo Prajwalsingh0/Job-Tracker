@@ -1,4 +1,4 @@
-import type { Analytics, CoverLetter, Job, JobPayload, JobSortField, JobStats, JobStatus, JobStatusHistoryEntry, PageResponse, Resume } from '@/types';
+import type { AiStatus, AiTaskName, Analytics, CoverLetter, GenerateResult, Job, JobPayload, JobSortField, JobStats, JobStatus, JobStatusHistoryEntry, MatchResult, PageResponse, Resume } from '@/types';
 import type { AuthResponse, LoginCredentials, RegisterCredentials, User } from '@/types/auth';
 
 /**
@@ -342,4 +342,15 @@ export const api = {
     },
 
     deleteCoverLetter: (id: number) => request<void>(`/api/cover-letters/${id}`, { method: 'DELETE' }),
+
+    /** Whether generated content is available, and how to enable it. */
+    aiStatus: () => request<AiStatus>('/api/ai/status'),
+
+    /** Deterministic keyword matching. Works without any AI provider. */
+    aiMatch: (input: { jobId: number; resumeText: string }) =>
+        request<MatchResult>('/api/ai/match', { method: 'POST', body: input }),
+
+    /** Provider-backed generation. Rejects with 503 when nothing is configured. */
+    aiGenerate: (input: { jobId: number; task: AiTaskName; resumeText?: string }) =>
+        request<GenerateResult>('/api/ai/generate', { method: 'POST', body: input }),
 };

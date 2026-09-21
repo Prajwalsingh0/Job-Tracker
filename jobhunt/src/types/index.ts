@@ -215,6 +215,40 @@ export interface Analytics {
   activeInterviews: ActiveInterview[];
 }
 
+/** Career-assistant payloads. */
+export interface AiStatus {
+  provider: string;
+  available: boolean;
+  hint?: string;
+}
+
+export type AiTaskName =
+  | 'JOB_SUMMARY'
+  | 'INTERVIEW_QUESTIONS'
+  | 'COVER_LETTER'
+  | 'STAR_PRACTICE'
+  | 'LEARNING_PLAN';
+
+export interface MatchResult {
+  jobId: number;
+  companyName: string;
+  jobTitle: string;
+  skillCoverage: number;
+  keywordOverlap: number;
+  method: string;
+  disclaimer: string;
+  jobSkills: string[];
+  matchedSkills: string[];
+  missingSkills: string[];
+  suggestions: string[];
+}
+
+export interface GenerateResult {
+  task: AiTaskName;
+  provider: string;
+  content: string;
+}
+
 // Column configuration for Kanban board
 export interface KanbanColumn {
   id: JobStatus;

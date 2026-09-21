@@ -110,6 +110,10 @@ Configuration is read from environment variables:
 | `JWT_REFRESH_EXPIRATION_MS` | `2592000000` (30 days) | Refresh-token lifetime |
 | `SECURE_COOKIES` | `false` | Set to `true` over HTTPS so the refresh cookie is `Secure` |
 | `STORAGE_ROOT` | `./data/uploads` | Directory where uploaded documents are written (git-ignored) |
+| `AI_API_KEY` | **none (optional)** | Enables generated content. Without it the assistant reports itself as unavailable; matching still works. |
+| `AI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint |
+| `AI_MODEL` | `gpt-4o-mini` | Model used for generation |
+| `AI_TIMEOUT_SECONDS` | `30` | Provider request timeout |
 | `LOGIN_RATE_LIMIT_MAX` | `10` | Attempts allowed per window on the credential endpoints |
 | `LOGIN_RATE_LIMIT_WINDOW` | `900` | Rate-limit window in seconds |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/jobhunt` | JDBC URL |
@@ -295,6 +299,25 @@ Deleting a job clears the link rather than deleting the letter.
 
 Both date bounds are optional ISO dates (`YYYY-MM-DD`); the default window is the last six
 months up to today. Inclusive range, and `from` after `to` returns `400`.
+
+### Assistant
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/ai/status` | Whether generated content is available, and how to enable it |
+| `POST` | `/api/ai/match` | Deterministic comparison of a posting against text you supply |
+| `POST` | `/api/ai/generate` | Provider-backed content for a saved job |
+
+**Matching is deterministic and always available.** It reports the literal overlap between the job
+description you saved and the text you paste: skill coverage, matched and missing skills, a weaker
+keyword-overlap figure, and suggestions. It is labelled as keyword overlap with an explicit
+disclaimer because that is what it is — it is **not** an ATS score and not a prediction.
+
+**Generated content requires a provider.** With no `AI_API_KEY` the endpoints return `503` with a
+setup instruction rather than invented text — a fake AI response is never shipped. When configured,
+every request is built only from the job you saved and the text you supplied, and the system prompt
+forbids inventing skills, employers or qualifications and forbids claiming guaranteed outcomes. Keys
+are read from the environment, never logged, and never sent to the browser.
 
 Errors always use the same JSON shape:
 

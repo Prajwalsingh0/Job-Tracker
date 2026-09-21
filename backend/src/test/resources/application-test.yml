@@ -36,6 +36,9 @@ app:
   storage:
     # Written under target/ so `mvn clean` wipes uploaded test fixtures.
     root: ./target/test-uploads
+  ai:
+    # Pinned to empty so a developer's real AI_API_KEY can never change test behaviour.
+    api-key: ""
   security:
     secure-cookies: false
     login-rate-limit:

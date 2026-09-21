@@ -48,6 +48,13 @@ app:
     # Where uploaded documents are written. Relative paths resolve against the working
     # directory; use an absolute path (or swap in object storage) in production.
     root: ${STORAGE_ROOT:./data/uploads}
+  ai:
+    # Optional. Without a key the assistant reports itself as unavailable and only the
+    # deterministic resume-to-job matching runs. The key is never logged or sent to the browser.
+    api-key: ${AI_API_KEY:}
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    model: ${AI_MODEL:gpt-4o-mini}
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:30}
   security:
     # Set to true when the API is served over HTTPS so refresh cookies are Secure-only.
     secure-cookies: ${SECURE_COOKIES:false}
