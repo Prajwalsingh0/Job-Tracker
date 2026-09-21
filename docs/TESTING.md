@@ -3,7 +3,7 @@
 ## Running the suites
 
 ```bash
-# Backend - 79 tests, no database server and no JWT_SECRET required
+# Backend - 83 tests; no database server needed (a real PostgreSQL is started in-process)
 cd backend && mvn test
 
 # Backend - tests plus the packaged jar
@@ -22,10 +22,11 @@ cd jobhunt && npm run lint && npm run build
 CI (`.github/workflows/ci.yml`) runs `mvn verify`, the frontend lint + tests + build, and a scan that
 fails the build if an obvious credential is committed.
 
-## Backend coverage — 79 tests
+## Backend coverage — 83 tests
 
 | Class | Tests | What it covers |
 | --- | --- | --- |
+| `PostgresIntegrationTest` | 4 | **Runs against a real PostgreSQL 14.22 server started inside the test JVM.** Flyway applies the actual `db/migration/postgresql` scripts and Hibernate validates the entities against what was created; then a full job lifecycle (tags, enums, dates, numeric columns), status history with timestamps, paging, analytics, `BYTEA` document round-trip and cover letters are exercised on the real engine |
 | `AuthApiTest` | 6 | Registration, login, profile, duplicate email, wrong password, unknown email, validation errors, protected endpoints |
 | `AuthSecurityTest` | 7 | httpOnly refresh cookie, no token leakage in the body, rotation, replay rejection, missing cookie, logout revocation, security headers, upload signature checks |
 | `AuthRateLimitTest` | 2 | Failed logins are limited after the threshold, correct password is refused while the window is open, and normal authenticated traffic is unaffected |
@@ -47,11 +48,18 @@ fails the build if an obvious credential is committed.
 | `components/ui/StatusBadge.test.tsx` | 3 | Label rendering, status colour, extra classes |
 | `components/ui/ui-primitives.test.tsx` | 4 | Confirm dialog semantics and callbacks, Escape to cancel, toast rendering, `aria-live` region |
 
-## Database in tests
+## Databases in tests
 
-Tests run against **H2 in PostgreSQL-compatibility mode** with Flyway applying the same migration
-pipeline as production, then Hibernate validating the entities against the migrated schema. A drift
-between the migrations and the entities therefore fails the build.
+Two engines, deliberately:
+
+- **H2 in PostgreSQL-compatibility mode** backs the fast API tests. Flyway applies the `h2/`
+  migration and Hibernate validates against it, so a drift between migrations and entities fails the
+  build.
+- **A real PostgreSQL 14.22** is started in-process by `PostgresIntegrationTest`
+  (`io.zonky.test:embedded-postgres`). It applies the `postgresql/` migration scripts and runs the
+  same validate pass, which is what proves the migration is correct for the database the application
+  actually uses. The first run downloads roughly 80 MB of PostgreSQL binaries; afterwards they are
+  cached in the Maven repository.
 
 The test profile pins `app.ai.api-key` to empty so a developer's real key can never change test
 behaviour.
@@ -60,16 +68,15 @@ behaviour.
 
 Stated plainly so the green numbers are not over-read:
 
-1. **PostgreSQL has never been executed against a real server.** No PostgreSQL instance or Docker
-   daemon was available in the development environment. The schema, queries and migrations are
-   proven against H2 in compatibility mode. `docker-compose.yml` makes this a two-command check —
-   do it before relying on it.
+1. **A hosted PostgreSQL.** The suite proves the schema and queries on a local PostgreSQL 14.22.
+   A managed instance with different version, SSL settings or a connection pooler is not covered.
 2. **The live AI provider path is untested.** No API key was available (and inventing one would be
    wrong). Prompt construction, task routing and error handling are covered with a stubbed provider;
    the outbound HTTP call is not.
-3. **No browser or end-to-end tests.** There is no Playwright/Cypress suite driving a real browser,
-   so rendering, drag-and-drop behaviour and responsive layouts are verified by build and inspection
-   rather than by automation.
-4. **No load or performance testing.**
-5. **Upload parsing is not tested** against real-world PDF/DOCX files — only the signature check is.
-6. **Dark mode is not implemented**, so it is neither tested nor available.
+3. **No browser or end-to-end tests.** Rendering, drag-and-drop and responsive layouts are verified by
+   build and inspection rather than by automation.
+4. **No Docker image build test.** The Dockerfiles are not built in CI, so they are verified by
+   inspection only.
+5. **No load or performance testing.**
+6. **Upload parsing is not tested** against real-world PDF/DOCX files — only the signature check is.
+7. **Dark mode is not implemented**, so it is neither tested nor available.

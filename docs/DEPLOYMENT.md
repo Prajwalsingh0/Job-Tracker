@@ -64,6 +64,10 @@ Both images are self-contained, so any container host works.
 Flyway runs on every start and applies anything outstanding. Hibernate only validates, so a schema
 mismatch stops the deploy rather than mutating data.
 
+The migration scripts are verified against a real PostgreSQL 14.22 server in the test suite, so the
+schema you are deploying has been applied to the actual engine rather than only to a compatibility
+mode.
+
 Sharing a database between containers is unnecessary — migrations are applied once, and further
 instances see the schema is current.
 

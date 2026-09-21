@@ -47,9 +47,9 @@ with any email you control; the password needs at least 6 characters.
 
 ## Screenshots
 
-Not included. They would have to be captured from a running instance, and the development
-environment had no PostgreSQL server to run one end to end. Rather than publish mocked-up images,
-here is how to capture your own:
+Not included. They would have to be captured from a running instance in a browser, which this
+environment could not provide, and mocked-up images would be worse than none. Here is how to capture
+your own:
 
 ```bash
 # with the stack running, capture at desktop and mobile widths

@@ -77,7 +77,7 @@ so the API does not confirm that someone else's record exists.
 | Decision | Why |
 | --- | --- |
 | Flyway owns the schema; Hibernate runs `validate` | Schema changes are reviewable and reversible, and entity/schema drift fails the build instead of silently altering a table |
-| Two migration folders (`postgresql/`, `h2/`) | Tests need a real database without a server; H2 rejects `BYTEA`, so the blob column is the only divergence |
+| Two migration folders (`postgresql/`, `h2/`) | Tests need a database without a server; H2 rejects `BYTEA`, so the blob column is the only divergence. The PostgreSQL scripts are additionally verified by a real PostgreSQL server started in-process during the test run |
 | Access token in memory, refresh token in an httpOnly cookie | A stored access token is readable by any injected script; a cookie is not |
 | Refresh tokens stored as SHA-256 hashes, rotated on use | A database leak yields nothing usable, and replay revokes the family |
 | Documents on disk behind `FileStorageService` | Database blobs made the list endpoint read every file; the interface also makes object storage a drop-in |

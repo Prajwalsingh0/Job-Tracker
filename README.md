@@ -177,7 +177,7 @@ so you can point it at a different backend without touching the code.
 ## 5. Tests and builds
 
 ```bash
-# Backend: 79 tests (auth, security, jobs, paging, CSV, storage, analytics, assistant)
+# Backend: 83 tests, including one class that runs against a real PostgreSQL server
 cd backend && mvn test
 
 # Backend: run tests and build the jar
@@ -408,13 +408,16 @@ shipped. See [Deployment](docs/DEPLOYMENT.md).
 | M4 Analytics & UX — funnel, charts, reminders, dialogs, toasts, accessibility | done, except dark mode |
 | M5 Assistant — deterministic matching, provider abstraction | done |
 | M6 Documentation & deployment | done |
+| Verification | 83 backend tests (4 of them against a real PostgreSQL 14.22), 25 frontend tests, production build and lint clean |
 
 ## Known limitations
 
-- **PostgreSQL has not been run against a real server.** No PostgreSQL instance or Docker daemon was
-  available while building, so the schema, queries and migrations are proven against H2 in
-  PostgreSQL-compatibility mode. `docker compose up -d postgres` makes validating this a two-command
-  check, and it should be done before relying on the app.
+- **Verified against PostgreSQL 14.22, but locally, not against a hosted instance.** The test suite
+  starts a real PostgreSQL server in-process (`PostgresIntegrationTest`) and runs the actual
+  `db/migration/postgresql` scripts against it, so the schema, entity mapping and queries are proven
+  on the real engine rather than only on H2. What remains untested is a managed database with its own
+  SSL, pooling or version differences, and the first test run downloads roughly 80 MB of PostgreSQL
+  binaries.
 - **Dark mode is not implemented.** The UI hardcodes its palette with no design tokens, so a real
   theme means introducing CSS variables and migrating components first. A half-finished toggle would
   be worse than none.

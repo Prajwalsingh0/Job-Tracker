@@ -21,6 +21,7 @@
         <java.version>17</java.version>
         <jjwt.version>0.11.5</jjwt.version>
         <springdoc.version>2.8.17</springdoc.version>
+        <embedded-postgres.version>2.2.2</embedded-postgres.version>
     </properties>
 
     <dependencies>
@@ -97,10 +98,22 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- H2 (in-memory database used by the automated tests) -->
+        <!-- H2 (in-memory database used by most of the automated tests) -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          A real PostgreSQL binary, started inside the test JVM. It exists so the PostgreSQL
+          migration and the entity mapping are verified against the actual database engine
+          rather than only against H2's compatibility mode.
+        -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>${embedded-postgres.version}</version>
             <scope>test</scope>
         </dependency>
 
